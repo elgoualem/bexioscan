@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="bexioscan" />
+  <meta name="theme-color" content="#f59e0b" />
+  <title>bexioscan 🇨🇭</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
+  </script>
+</head>
+<body style="margin:0;padding:0;background:#0a1220;-webkit-tap-highlight-color:transparent">
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" defer></script>
+
+  <script type="text/babel">
+    const { useState, useRef, useCallback } = React;
+
+    const BEXIO_BASE = "/bexio-proxy?path=/2.0";
+
+    const COMPTES = [
+      { id: null, code: "1100", label: "Débiteurs" },
+      { id: null, code: "2000", label: "Créanciers fournisseurs" },
+      { id: null, code: "3000", label: "Ventes de marchandises" },
+      { id: null, code: "3200", label: "Prestations de services" },
+      { id: null, code: "4000", label: "Achats de marchandises" },
+      { id: null, code: "4200", label: "Fournitures de bureau & petits matériels" },
+      { id: null, code: "4400", label: "Publicité & marketing" },
+      { id: null, code: "4500", label: "Assurances choses" },
+      { id: null, code: "4600", label: "Énergie & eau" },
+      { id: null, code: "4700", label: "Frais de télécommunication" },
+      { id: null, code: "4800", label: "Frais de transport & livraison" },
+      { id: null, code: "4900", label: "Autres charges d'exploitation" },
+      { id: null, code: "5000", label: "Salaires et appointements" },
+      { id: null, code: "5700", label: "Charges sociales AVS/AI/APG/AC" },
+      { id: null, code: "5800", label: "Assurances accidents LAA" },
+      { id: null, code: "5820", label: "Prévoyance professionnelle LPP" },
+      { id: null, code: "6000", label: "Loyer & charges locatives" },
+      { id: null, code: "6200", label: "Véhicules & frais de transport" },
+      { id: null, code: "6300", label: "Assurances RC & autres" },
+      { id: null, code: "6500", label: "Entretien & réparations machines" },
+      { id: null, code: "6600", label: "Frais de bureau & administration" },
+      { id: null, code: "6700", label: "Frais de déplacement & représentation" },
+      { id: null, code: "6800", label: "Honoraires & conseils" },
+      { id: null, code: "6850", label: "Frais de formation & perfectionnement" },
+      { id: null, code: "6900", label: "Frais informatiques & logiciels SaaS" },
+      { id: null, code: "6950", label: "Abonnements & licences" },
+      { id: null, code: "7000", label: "Amortissements ordinaires" },
+      { id: null, code: "8000", label: "Charges financières & intérêts" },
+    ];
+
+    const TVA_CH = [
+      { taux: 8.1,  label: "8.1% — Taux normal" },
+      { taux: 2.6,  label: "2.6% — Taux réduit (alim./méd./livres)" },
+      { taux: 3.8,  label: "3.8% — Hôtellerie" },
+      { taux: 0,    label: "0% — Exonéré / hors TVA" },
+    ];
+
+    const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+
+    /* Génère le numéro interne au format g{mois}{AA}/{seq} — compteur mensuel persisté en localStorage */
+    function genererNumeroFacture() {
+      const now = new Date();
+      const mois = MOIS_FR[now.getMonth()];
+      const annee = String(now.getFullYear()).slice(-2);
+      const cle = `bx_compteur_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const compteur = parseInt(localStorage.getItem(cle) || "0", 10) + 1;
+      localStorage.setItem(cle, String(compteur));
+      return `g${mois}${annee}/${String(compteur).padStart(3, "0")}`;
+    }
+
+    function fileToDataURL(file) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+
+    /* Convertit une image (photo de facture) en PDF, retourne le base64 du PDF */
+    async function convertImageToPdf(file) {
+      const dataUrl = await fileToDataURL(file);
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = rej;
+        im.src = dataUrl;
+      });
+      const { jsPDF } = window.jspdf;
+      const orientation = img.width > img.height ? "l" : "p";
+      const doc = new jsPDF({ orientation, unit: "px", format: [img.width, img.height] });
+      const format = file.type.includes("png") ? "PNG" : "JPEG";
+      doc.addImage(dataUrl, format, 0, 0, img.width, img.height);
+      return doc.output("datauristring").split(",")[1];
+    }
+
+    /* Attend que OpenCV.js soit pleinement initialisé (gère les différents modes d'export du module) */
+    function getCv() {
+      if (window.__cvReady) return window.__cvReady;
+      window.__cvReady = (async () => {
+        for (let i = 0; i < 150 && !window.cv; i++) await new Promise(r => setTimeout(r, 100));
+        if (!window.cv) throw new Error("OpenCV indisponible");
+        let cvObj = window.cv;
+        if (cvObj instanceof Promise) cvObj = await cvObj;
+        if (!cvObj.Mat) {
+          await new Promise((resolve) => { cvObj.onRuntimeInitialized = resolve; });
+        }
+        window.cv = cvObj;
+        return cvObj;
+      })();
+      return window.__cvReady;
+    }
+
+    function loadImageElement(url) {
+      return new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = url;
+      });
+    }
+
+    function distPts(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    function orderQuadPoints(pts) {
+      const sums = pts.map(p => p.x + p.y);
+      const diffs = pts.map(p => p.x - p.y);
+      const tl = pts[sums.indexOf(Math.min(...sums))];
+      const br = pts[sums.indexOf(Math.max(...sums))];
+      const tr = pts[diffs.indexOf(Math.max(...diffs))];
+      const bl = pts[diffs.indexOf(Math.min(...diffs))];
+      return [tl, tr, br, bl];
+    }
+
+    function warpToCanvas(cv, srcCanvas, [tl, tr, br, bl]) {
+      const maxWidth = Math.round(Math.max(distPts(br, bl), distPts(tr, tl)));
+      const maxHeight = Math.round(Math.max(distPts(tr, br), distPts(tl, bl)));
+      const src = cv.imread(srcCanvas);
+      const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
+      const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight]);
+      const M = cv.getPerspectiveTransform(srcTri, dstTri);
+      const dst = new cv.Mat();
+      cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight));
+      const outCanvas = document.createElement("canvas");
+      outCanvas.width = maxWidth;
+      outCanvas.height = maxHeight;
+      cv.imshow(outCanvas, dst);
+      [src, srcTri, dstTri, M, dst].forEach(m => m.delete());
+      return outCanvas;
+    }
+
+    function enhanceCanvas(cv, canvas) {
+      const src = cv.imread(canvas);
+
+      // Conversion en niveaux de gris
+      const gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+      // Binarisation adaptative — élimine les ombres et variations d'éclairage
+      const binary = new cv.Mat();
+      cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
+
+      // Légère réduction du bruit
+      const denoised = new cv.Mat();
+      cv.medianBlur(binary, denoised, 3);
+
+      // Reconversion en RGBA pour l'affichage canvas
+      const out_gray = new cv.Mat();
+      cv.cvtColor(denoised, out_gray, cv.COLOR_GRAY2RGBA);
+
+      const out = document.createElement("canvas");
+      out.width = canvas.width;
+      out.height = canvas.height;
+      cv.imshow(out, out_gray);
+
+      [src, gray, binary, denoised, out_gray].forEach(m => m.delete());
+      return out;
+    }
+
+    /* Détecte les bords du document, corrige la perspective puis améliore le contraste — façon scanner */
+    async function scanAndEnhance(file) {
+      const cv = await getCv();
+      const dataUrl = await fileToDataURL(file);
+      const imgEl = await loadImageElement(dataUrl);
+
+      const srcCanvas = document.createElement("canvas");
+      srcCanvas.width = imgEl.width;
+      srcCanvas.height = imgEl.height;
+      srcCanvas.getContext("2d").drawImage(imgEl, 0, 0);
+
+      const MAX_DET = 1000;
+      const scale = Math.min(1, MAX_DET / Math.max(imgEl.width, imgEl.height));
+      const detCanvas = document.createElement("canvas");
+      detCanvas.width = Math.round(imgEl.width * scale);
+      detCanvas.height = Math.round(imgEl.height * scale);
+      detCanvas.getContext("2d").drawImage(imgEl, 0, 0, detCanvas.width, detCanvas.height);
+
+      let src, gray, blurred, edged, kernel, contours, hierarchy;
+      let quad = null;
+      try {
+        src = cv.imread(detCanvas);
+        gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+        // Flou plus fort pour ignorer les ombres et textures
+        blurred = new cv.Mat();
+        cv.GaussianBlur(gray, blurred, new cv.Size(9, 9), 0);
+
+        // Détection de bords avec seuils plus larges
+        edged = new cv.Mat();
+        cv.Canny(blurred, edged, 30, 100);
+
+        // Dilatation plus large pour relier les contours fragmentés
+        kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+        cv.dilate(edged, edged, kernel);
+        cv.dilate(edged, edged, kernel);
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let maxArea = 0;
+        const imgArea = detCanvas.width * detCanvas.height;
+        for (let i = 0; i < contours.size(); i++) {
+          const cnt = contours.get(i);
+          const area = cv.contourArea(cnt);
+          if (area > imgArea * 0.1 && area > maxArea) {
+            const peri = cv.arcLength(cnt, true);
+            const approx = new cv.Mat();
+            cv.approxPolyDP(cnt, approx, 0.03 * peri, true);
+            if (approx.rows === 4) {
+              maxArea = area;
+              if (quad) quad.delete();
+              quad = approx;
+            } else {
+              approx.delete();
+            }
+          }
+          cnt.delete();
+        }
+      } finally {
+        [src, gray, blurred, edged, kernel, hierarchy].forEach(m => m && m.delete());
+        if (contours) contours.delete();
+      }
+
+      let outCanvas;
+      let cropped = false;
+      if (quad) {
+        const pts = [];
+        for (let i = 0; i < 4; i++) {
+          pts.push({ x: quad.data32S[i * 2] / scale, y: quad.data32S[i * 2 + 1] / scale });
+        }
+        quad.delete();
+        outCanvas = warpToCanvas(cv, srcCanvas, orderQuadPoints(pts));
+        cropped = true;
+      } else {
+        outCanvas = srcCanvas;
+      }
+
+      const enhanced = enhanceCanvas(cv, outCanvas);
+      const blob = await new Promise(r => enhanced.toBlob(r, "image/jpeg", 0.92));
+      return { blob, cropped };
+    }
+
+    function fileToBase64(file) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+
+    function fCHF(val) {
+      if (!val && val !== 0) return "—";
+      return new Intl.NumberFormat("fr-CH", { style: "currency", currency: "CHF", minimumFractionDigits: 2 }).format(val);
+    }
+
+    function Field({ label, value, accent, span }) {
+      return (
+        <div style={{ gridColumn: span ? "1 / -1" : "auto" }}>
+          <div style={{ fontSize: 10, color: "#cbd5e1", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: accent ? "#f59e0b" : "#ffffff", wordBreak: "break-all" }}>{value || "—"}</div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [step, setStep] = useState(() => (localStorage.getItem("bx_token") && localStorage.getItem("bx_anthropic")) ? 2 : 1);
+      const [token, setToken] = useState(() => localStorage.getItem("bx_token") || "");
+      const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem("bx_anthropic") || "");
+      const [numeroDepart, setNumeroDepart] = useState("");
+      const [file, setFile] = useState(null);
+      const [originalFile, setOriginalFile] = useState(null);
+      const [pages, setPages] = useState([]);
+      const [preview, setPreview] = useState(null);
+      const [scanning, setScanning] = useState(false);
+      const [scanInfo, setScanInfo] = useState("");
+      const [uploadError, setUploadError] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [loadingMsg, setLoadingMsg] = useState("");
+      const [error, setError] = useState("");
+      const [data, setData] = useState(null);
+      const [accounts, setAccounts] = useState(COMPTES);
+      const [selectedAccount, setSelectedAccount] = useState(null);
+      const [paymentMode, setPaymentMode] = useState("virement");
+      const [dateReglement, setDateReglement] = useState(() => new Date().toISOString().split("T")[0]);
+      const [result, setResult] = useState(null);
+      const [dateConsolidation, setDateConsolidation] = useState(() => {
+        const now2 = new Date();
+        return `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}-${String(now2.getDate()).padStart(2,"0")}`;
+      });
+      const fileRef = useRef();
+
+      function saveToken() {
+        if (!token.trim() || !anthropicKey.trim()) return;
+        localStorage.setItem("bx_token", token.trim());
+        localStorage.setItem("bx_anthropic", anthropicKey.trim());
+        fetchAccounts(token.trim());
+        setStep(2);
+      }
+
+      async function fetchAccounts(t) {
+        try {
+          const res = await fetch(`${BEXIO_BASE}/accounts?limit=2000`, {
+            headers: { "x-bexio-token": t, Accept: "application/json" },
+          });
+          if (!res.ok) return;
+          const raw = await res.json();
+          if (Array.isArray(raw) && raw.length > 0) {
+            const mapped = raw.filter(a => a.account_no && parseFloat(a.account_no) >= 3000)
+              .map(a => ({ id: a.id, code: a.account_no, label: a.name }));
+            if (mapped.length > 0) setAccounts(mapped);
+          }
+        } catch (_) {}
+      }
+
+      const onDrop = useCallback((e) => {
+        e.preventDefault();
+        const f = e.dataTransfer.files[0];
+        if (f) handleFile(f);
+      }, []);
+
+      function handleFile(f) {
+        if (!f) return;
+        setError("");
+        if (f.type === "application/pdf") {
+          setPages([]);
+          setFile(f);
+          setOriginalFile(f);
+          setPreview(null);
+          setScanInfo("");
+          return;
+        }
+        setFile(null); // une image bascule en mode photo(s) multi-pages
+        setScanInfo("");
+        setScanning(true);
+        const id = Date.now() + Math.random();
+        setPages(prev => [...prev, { id, url: URL.createObjectURL(f), raw: f, blob: f, processing: true }]);
+        scanAndEnhance(f)
+          .then(({ blob, cropped }) => {
+            const url = URL.createObjectURL(blob);
+            setPages(prev => prev.map(p => (p.id === id ? { ...p, url, blob, cropped, processing: false } : p)));
+            setScanInfo(cropped ? "Bords détectés et recadrés ✓" : "Amélioration appliquée (bords non détectés)");
+          })
+          .catch(() => {
+            setPages(prev => prev.map(p => (p.id === id ? { ...p, processing: false } : p)));
+            setScanInfo("Scan auto indisponible — photo originale conservée");
+          })
+          .finally(() => setScanning(false));
+      }
+
+      function useOriginalPhoto() {
+        setPages(prev => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          if (!last.raw) return prev;
+          return prev.slice(0, -1).concat({ ...last, url: URL.createObjectURL(last.raw), blob: last.raw, cropped: false });
+        });
+        setScanInfo("");
+      }
+
+      function removePage(id) {
+        setPages(prev => prev.filter(p => p.id !== id));
+      }
+
+      /* Assemble toutes les pages scannées en un seul PDF multi-pages */
+      async function buildPdfFromPages(pagesList) {
+        const { jsPDF } = window.jspdf;
+        let doc = null;
+        for (let i = 0; i < pagesList.length; i++) {
+          const dataUrl = await fileToDataURL(pagesList[i].blob);
+          const img = await loadImageElement(dataUrl);
+          const orientation = img.width > img.height ? "l" : "p";
+          if (i === 0) {
+            doc = new jsPDF({ orientation, unit: "px", format: [img.width, img.height] });
+          } else {
+            doc.addPage([img.width, img.height], orientation);
+          }
+          doc.addImage(dataUrl, "JPEG", 0, 0, img.width, img.height);
+        }
+        const base64 = doc.output("datauristring").split(",")[1];
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new File([bytes], "facture.pdf", { type: "application/pdf" });
+      }
+
+      async function startAnalysis() {
+        if (pages.length === 0) return extractWithClaude();
+        setLoading(true);
+        setLoadingMsg(pages.length > 1 ? "Assemblage du PDF multi-pages…" : "Préparation…");
+        try {
+          const combined = await buildPdfFromPages(pages);
+          setFile(combined);
+          await extractWithClaude(combined);
+        } catch (e) {
+          setError("Erreur d'assemblage : " + e.message);
+          setLoading(false);
+        }
+      }
+
+      async function extractWithClaude(fileArg) {
+        const f = fileArg || file;
+        if (!f) return;
+        setLoading(true);
+        setLoadingMsg("Analyse en cours…");
+        setError("");
+        try {
+          const base64 = await fileToBase64(f);
+          const isPdf = f.type === "application/pdf";
+          const ENSEIGNES_MULTI = ["coop", "denner", "lidl", "aldi"];
+          const content = [
+            { type: isPdf ? "document" : "image", source: { type: "base64", media_type: f.type, data: base64 } },
+            { type: "text", text: `Tu es un expert-comptable suisse. Analyse ce document.
+
+Il peut contenir UN SEUL document (facture ou ticket) OU PLUSIEURS tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) photographiés ensemble.
+
+Si tu détectes PLUSIEURS tickets sur l'image, retourne un objet JSON avec un tableau "tickets" contenant chaque ticket séparément.
+Si tu détectes UN SEUL document, retourne un objet JSON standard (sans tableau "tickets").
+
+Ta réponse doit commencer directement par { et finir par }, sans texte avant ou après, sans markdown, sans backticks.
+
+Format UN SEUL document :
+{
+  "fournisseur": "nom",
+  "date_facture": "JJ.MM.AAAA",
+  "numero_facture": "numéro ou null",
+  "description": "description courte",
+  "lignes_tva": [{ "montant_ht": nombre, "taux_tva": 8.1 ou 2.6 ou 3.8 ou 0, "montant_tva": nombre, "compte_code": "ex: 4200", "compte_libelle": "libellé" }],
+  "montant_ttc": nombre,
+  "devise": "CHF",
+  "date_echeance": "JJ.MM.AAAA ou null",
+  "date_reglement": null,
+  "reference_qr": "référence 27 chiffres ou null",
+  "iban": "IBAN ou null",
+  "compte_suggere_code": "ex: 4200",
+  "compte_suggere_libelle": "libellé",
+  "confiance": "haute ou moyenne ou faible"
+}
+
+Si la facture regroupe plusieurs catégories d'achats (ex : marché Prodega/Transgourmet avec alimentaire, boissons, emballage, non-alimentaire, entretien...), crée UNE LIGNE PAR CATÉGORIE dans lignes_tva, avec pour chacune son propre compte_code ET son propre taux_tva — ne mélange pas plusieurs catégories dans une seule ligne. Utilise ces comptes de référence si le fournisseur correspond à ce type d'achat :
+- 4000 : achats de marchandises courantes (alimentaire, boissons non-alcoolisées, boucherie, fruits/légumes, laitier/pâtisserie) — généralement TVA 2.6%
+- 4200 : fournitures de bureau & petits matériels — pas pour les marchandises
+- 4205 : achats de matériel d'emballage — TVA correspondant au document
+- 4001 : achats de matières non fabriquées / articles non-alimentaires (vaisselle jetable, sachets...) — souvent TVA 8.1%
+- 6050 : entretien des locaux (produits d'entretien, nettoyage)
+- 6896 : pertes sur correction / écarts d'arrondi
+Si la boisson est alcoolisée (bière, vin...), applique le taux 8.1% et non 2.6%. Si le document ne présente qu'une seule catégorie d'achat, une seule ligne suffit avec le compte_suggere_code global.
+
+Format PLUSIEURS tickets :
+{
+  "tickets": [
+    { "fournisseur": "Coop", "date_facture": "JJ.MM.AAAA", "montant_ttc": nombre, "lignes_tva": [{ "montant_ht": nombre, "taux_tva": 8.1, "montant_tva": nombre }, { "montant_ht": nombre, "taux_tva": 2.6, "montant_tva": nombre }], "compte_suggere_code": "4200" },
+    { "fournisseur": "Lidl", "date_facture": "JJ.MM.AAAA", "montant_ttc": nombre, "lignes_tva": [...], "compte_suggere_code": "4200" }
+  ]
+}
+
+Important : pour chaque ticket/facture, si plusieurs taux de TVA sont présents, crée une entrée par taux dans lignes_tva.` }
+          ];
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": anthropicKey,
+              "anthropic-version": "2023-06-01",
+              "anthropic-dangerous-direct-browser-access": "true",
+            },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content }] }),
+          });
+          const json = await res.json();
+          if (!res.ok || json.type === "error") {
+            throw new Error(json.error?.message || `Erreur API (${res.status})`);
+          }
+          const text = json.content?.map(b => b.text || "").join("") || "";
+          if (!text.trim()) throw new Error("Réponse vide de Claude — réessaie ou reprends la photo");
+          const jsonStart = text.indexOf("{");
+          const jsonEnd = text.lastIndexOf("}");
+          if (jsonStart === -1 || jsonEnd === -1) throw new Error("Claude n'a pas renvoyé de JSON exploitable");
+          const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+
+          // Cas multi-tickets : plusieurs tickets photographiés ensemble
+          if (Array.isArray(parsed.tickets) && parsed.tickets.length > 0) {
+            const now = new Date();
+            const cleTickets = `bx_tickets_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+            const existing = JSON.parse(localStorage.getItem(cleTickets) || "[]");
+            parsed.tickets.forEach(t => {
+              if (!Array.isArray(t.lignes_tva) || t.lignes_tva.length === 0) {
+                t.lignes_tva = [{ montant_ht: parseFloat(t.montant_ttc) / 1.081 || 0, taux_tva: 8.1, montant_tva: parseFloat(t.montant_ttc) - parseFloat(t.montant_ttc) / 1.081 || 0 }];
+              }
+              existing.push({
+                fournisseur: t.fournisseur,
+                date: t.date_facture,
+                montant_ttc: t.montant_ttc,
+                lignes_tva: t.lignes_tva,
+                compte_suggere_code: t.compte_suggere_code || "4200",
+                numero_interne: genererNumeroFacture(),
+                ts: Date.now(),
+                fichier: { base64, type: f.type, name: f.name },
+              });
+            });
+            localStorage.setItem(cleTickets, JSON.stringify(existing));
+            setStep(5);
+            setLoading(false);
+            setLoadingMsg("");
+            return;
+          }
+          if (!Array.isArray(parsed.lignes_tva) || parsed.lignes_tva.length === 0) {
+            parsed.lignes_tva = [{ montant_ht: parsed.montant_ht || 0, taux_tva: parsed.taux_tva ?? 8.1, montant_tva: parsed.montant_tva || 0 }];
+          }
+          parsed.numero_interne = genererNumeroFacture();
+
+          // Détection tickets de caisse Coop/Denner/Lidl/Aldi → mise en attente mensuelle
+          const ENSEIGNES_TICKET = ["coop", "denner", "lidl", "aldi"];
+          const EXCLUSIONS_TICKET = ["genossenschaft", "coop genossenschaft"];
+          const nomFournisseur = (parsed.fournisseur || "").toLowerCase();
+          const estExclu = EXCLUSIONS_TICKET.some(e => nomFournisseur.includes(e));
+          const estTicket = !estExclu && ENSEIGNES_TICKET.some(e => nomFournisseur.includes(e));
+          if (estTicket) {
+            const now = new Date();
+            const cleTickets = `bx_tickets_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+            const existing = JSON.parse(localStorage.getItem(cleTickets) || "[]");
+            existing.push({
+              fournisseur: parsed.fournisseur,
+              date: parsed.date_facture,
+              montant_ttc: parsed.montant_ttc,
+              lignes_tva: parsed.lignes_tva,
+              compte_suggere_code: parsed.compte_suggere_code,
+              numero_interne: parsed.numero_interne,
+              ts: Date.now(),
+              fichier: { base64, type: f.type, name: f.name },
+            });
+            localStorage.setItem(cleTickets, JSON.stringify(existing));
+            genererNumeroFacture.__annuler = true; // marqueur pour ne pas incrémenter 2 fois
+            setError("");
+            setStep(5); // écran dédié "ticket mis en attente"
+            setLoading(false);
+            setLoadingMsg("");
+            return;
+          }
+
+          setData(parsed);
+          setSelectedAccount(accounts.find(a => a.code === parsed.compte_suggere_code) || null);
+          setPaymentMode(parsed.reference_qr ? "QR" : parsed.iban ? "IBAN" : "MANUAL");
+          setStep(3);
+        } catch (e) {
+          setError("Erreur d'extraction : " + e.message);
+        } finally {
+          setLoading(false);
+          setLoadingMsg("");
+        }
+      }
+
+      function totals(d) {
+        const lignes = d?.lignes_tva || [];
+        const ht = lignes.reduce((s, l) => s + (parseFloat(l.montant_ht) || 0), 0);
+        const tva = lignes.reduce((s, l) => s + (parseFloat(l.montant_tva) || 0), 0);
+        return { ht, tva, ttc: ht + tva };
+      }
+
+      function updateLigne(i, patch) {
+        setData(d => {
+          const lignes = d.lignes_tva.map((l, idx) => (idx === i ? { ...l, ...patch } : l));
+          return { ...d, lignes_tva: lignes };
+        });
+      }
+
+      function ligneTauxChange(i, taux) {
+        updateLigne(i, { taux_tva: taux, montant_tva: Math.round(((data.lignes_tva[i].montant_ht || 0) * taux) / 100 * 100) / 100 });
+      }
+
+      function addLigne() {
+        setData(d => ({ ...d, lignes_tva: [...d.lignes_tva, { montant_ht: 0, taux_tva: 8.1, montant_tva: 0 }] }));
+      }
+
+      function removeLigne(i) {
+        setData(d => ({ ...d, lignes_tva: d.lignes_tva.filter((_, idx) => idx !== i) }));
+      }
+
+      async function createInBexio(dataOverride, accountOverride, paymentOverride, filesOverride) {
+        const d = dataOverride || data;
+        const acc = accountOverride !== undefined ? accountOverride : selectedAccount;
+        const pm = paymentOverride || paymentMode;
+        if (!d || !token) return;
+        setLoading(true);
+        setError("");
+        setUploadError("");
+        try {
+          let contactId = null;
+          setLoadingMsg("Recherche fournisseur…");
+          const sr = await fetch(`${BEXIO_BASE}/contact/search`, {
+            method: "POST",
+            headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify([{ field: "name_1", value: d.fournisseur, criteria: "like" }]),
+          });
+          if (sr.ok) { const c = await sr.json(); if (c?.length > 0) contactId = c[0].id; }
+          if (!contactId) {
+            setLoadingMsg("Création fournisseur…");
+            const cc = await fetch(`${BEXIO_BASE}/contact`, {
+              method: "POST",
+              headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ contact_type_id: 2, name_1: d.fournisseur, owner_id: 1, user_id: 1 }),
+            });
+            if (cc.ok) { const c = await cc.json(); contactId = c.id; }
+          }
+          if (!contactId) throw new Error("Impossible de déterminer le fournisseur dans bexio");
+
+          setLoadingMsg("Paramètres bexio…");
+          let taxRates = [];
+          const tr = await fetch(`/bexio-proxy?path=/3.0/taxes`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+          if (tr.ok) taxRates = await tr.json();
+          const findTaxId = (rate) => {
+            const matches = taxRates.filter(t => t.is_active && Math.abs(parseFloat(t.value) - parseFloat(rate)) < 0.01);
+            if (matches.length === 0) return null;
+            const isImportCode = t => /import|douan/i.test(t.type || "") || /import|douan/i.test(t.name || t.display_name || "");
+            const pool = matches.filter(t => !isImportCode(t));
+            const finalPool = pool.length > 0 ? pool : matches;
+            const material = finalPool.find(t => t.type === "pre_tax_material");
+            const investment = finalPool.find(t => t.type === "pre_tax_investment");
+            return (material || investment || finalPool[0]).id;
+          };
+          let accountId = acc?.id || null;
+          if (!accountId && acc?.code) {
+            const ar = await fetch(`${BEXIO_BASE}/accounts`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+            if (ar.ok) { const aa = await ar.json(); const m = aa.find(a => a.account_no === acc.code); if (m) accountId = m.id; }
+          }
+
+          let dateFormatted = new Date().toISOString().split("T")[0];
+          if (d.date_facture) { const p = d.date_facture.split("."); if (p.length === 3) dateFormatted = `${p[2]}-${p[1]}-${p[0]}`; }
+          const dueDate = new Date(dateFormatted);
+          dueDate.setDate(dueDate.getDate() + 30);
+          let dueDateFormatted = dueDate.toISOString().split("T")[0];
+          if (d.date_echeance) {
+            const p = d.date_echeance.split(".");
+            if (p.length === 3) dueDateFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+          }
+
+          // Attachement PJ — converti en PDF puis envoyé au stockage de fichiers bexio (v3, multipart) pour obtenir l'attachment_id
+          // Supporte plusieurs fichiers (ex : consolidation de plusieurs tickets de caisse)
+          let attachmentIds = [];
+          let pjOk = false;
+          try {
+            setLoadingMsg("Conversion PDF et envoi du/des fichier(s)…");
+            const filesToAttach = filesOverride && filesOverride.length > 0
+              ? filesOverride.map(fi => ({
+                  blob: new Blob([Uint8Array.from(atob(fi.base64), c => c.charCodeAt(0))], { type: fi.type }),
+                  name: fi.name,
+                }))
+              : [{ blob: file, name: file.name }];
+
+            for (const fi of filesToAttach) {
+              let pdfBlob, attachName;
+              if (fi.blob.type === "application/pdf") {
+                pdfBlob = fi.blob;
+                attachName = fi.name;
+              } else {
+                const pdfBase64 = await convertImageToPdf(fi.blob);
+                pdfBlob = new Blob([Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))], { type: "application/pdf" });
+                attachName = fi.name.replace(/\.[^.]+$/, "") + ".pdf";
+              }
+              const formData = new FormData();
+              formData.append("file", pdfBlob, attachName);
+              const fr = await fetch(`/bexio-proxy?path=/3.0/files`, {
+                method: "POST",
+                headers: { "x-bexio-token": token, Accept: "application/json" },
+                body: formData,
+              });
+              if (fr.ok) {
+                const fdata = await fr.json();
+                const f0 = Array.isArray(fdata) ? fdata[0] : fdata;
+                const fid = f0?.uuid || f0?.id;
+                if (fid) { attachmentIds.push(fid); pjOk = true; }
+                else { setUploadError("Pas d'id dans la réponse — " + JSON.stringify(fdata)); }
+              } else {
+                const errText = await fr.text();
+                setUploadError(`(${fr.status}) ${errText}`);
+              }
+            }
+          } catch (e) {
+            console.error("Upload fichier échoué:", e);
+            setUploadError(e.message);
+          }
+
+          setLoadingMsg("Création de la facture…");
+          const lignes = d.lignes_tva.filter(l => parseFloat(l.montant_ht) !== 0);
+          const resolveAccountId = (code) => {
+            if (!code) return accountId;
+            const found = accounts.find(a => a.code === code);
+            return found ? found.id : accountId;
+          };
+          const payload = {
+            supplier_id: contactId,
+            contact_partner_id: contactId,
+            vendor_ref: d.numero_interne,
+            title: d.fournisseur.slice(0, 80),
+            bill_date: dateFormatted,
+            due_date: dueDateFormatted,
+            manual_amount: true,
+            amount_man: totals(d).ttc,
+            currency_code: d.devise || "CHF",
+            item_net: true,
+            attachment_ids: attachmentIds,
+            address: {
+              lastname_company: d.fournisseur,
+              type: "COMPANY",
+            },
+            line_items: lignes.map((l, i) => ({
+              position: i + 1,
+              title: (lignes.length > 1 ? `${l.compte_libelle || d.description || d.fournisseur} (TVA ${l.taux_tva}%)` : (d.description || d.fournisseur)).slice(0, 80) || d.fournisseur.slice(0, 80),
+              tax_id: findTaxId(l.taux_tva),
+              amount: l.montant_ht,
+              booking_account_id: resolveAccountId(l.compte_code),
+            })),
+            discounts: [],
+            payment: {
+              type: pm,
+              execution_date: dateReglement,
+              amount: totals(d).ttc,
+              salary_payment: false,
+              ...(pm === "IBAN" && d.iban ? { iban: d.iban.replace(/\s/g, ""), name: d.fournisseur.slice(0, 70) } : {}),
+              ...(pm === "QR" && d.reference_no ? { reference_no: d.reference_qr } : {}),
+            },
+          };
+          const ir = await fetch(`/bexio-proxy?path=/4.0/purchase/bills`, {
+            method: "POST",
+            headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!ir.ok) { const err = await ir.text(); throw new Error(`bexio ${ir.status}: ${err}`); }
+          const inv = await ir.json();
+
+          setResult({ id: inv.id, url: `https://office.bexio.com/purchase/bills`, pjOk, numeroInterne: d.numero_interne });
+          setStep(4);
+        } catch (e) {
+          setError("Erreur bexio : " + e.message);
+          throw e;
+        } finally {
+          setLoading(false);
+          setLoadingMsg("");
+        }
+      }
+
+      function reset() { setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
+
+      const S = {
+        root: { minHeight: "100svh", background: "#0a1220", display: "flex", flexDirection: "column", alignItems: "center", padding: "env(safe-area-inset-top, 24px) 14px 48px", fontFamily: "'Courier New', monospace", color: "#ffffff" },
+        header: { width: "100%", maxWidth: 500, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingTop: 8 },
+        card: { width: "100%", maxWidth: 500, background: "#162639", border: "1px solid #2a3a58", borderRadius: 16, overflow: "hidden" },
+        section: { padding: "24px 20px 20px" },
+        title: { margin: "0 0 5px", fontSize: 19, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px" },
+        subtitle: { margin: "0 0 18px", fontSize: 11, color: "#cbd5e1" },
+        label: { display: "block", fontSize: 10, color: "#cbd5e1", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 },
+        input: { width: "100%", background: "#101e33", border: "1px solid #2e3f5c", borderRadius: 8, padding: "11px 12px", color: "#ffffff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 12, WebkitAppearance: "none" },
+        select: { width: "100%", background: "#101e33", border: "1px solid #2e3f5c", borderRadius: 8, padding: "11px 12px", color: "#ffffff", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer", WebkitAppearance: "none" },
+        btn: { width: "100%", background: "#f59e0b", border: "none", borderRadius: 8, padding: "13px", color: "#000", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 8, letterSpacing: "0.04em", WebkitAppearance: "none" },
+        btnGhost: { background: "transparent", border: "1px solid #2e3f5c", borderRadius: 8, padding: "11px 13px", color: "#64748b", fontFamily: "inherit", fontSize: 11, cursor: "pointer" },
+        btnLink: { display: "inline-block", background: "#f59e0b", borderRadius: 8, padding: "12px 22px", color: "#000", fontFamily: "inherit", fontSize: 12, fontWeight: 700, textDecoration: "none", marginTop: 14, letterSpacing: "0.04em" },
+        hint: { fontSize: 10, color: "#cbd5e1", marginTop: 10, textAlign: "center" },
+        link: { color: "#f59e0b", textDecoration: "none" },
+        error: { color: "#f87171", fontSize: 11, background: "#450a0a33", border: "1px solid #7f1d1d", borderRadius: 6, padding: "9px 11px", marginTop: 10 },
+        dropzone: { border: "2px dashed", borderRadius: 12, padding: "28px 16px", cursor: "pointer", transition: "border-color 0.3s", marginBottom: 12, textAlign: "center" },
+        grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "13px 16px", marginBottom: 16, padding: "16px", background: "#101e33", borderRadius: 10, border: "1px solid #2a3a58" },
+        badge: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20, letterSpacing: "0.06em", textTransform: "uppercase" },
+        successIcon: { width: 60, height: 60, borderRadius: "50%", background: "#14532d", color: "#86efac", fontSize: 26, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", boxShadow: "0 0 28px #22c55e33" },
+      };
+
+      return (
+        <div style={S.root}>
+          {/* Header */}
+          <div style={S.header}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 18, color: "#f59e0b" }}>⬡</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px" }}>bexio<em>scan</em></span>
+              <span style={{ fontSize: 10, background: "#2e3f5c", padding: "2px 7px", borderRadius: 20, color: "#cbd5e1" }}>🇨🇭</span>
+              {step > 1 && (
+                <button onClick={() => setStep(1)} style={{ background: "transparent", border: "none", color: "#cbd5e1", fontSize: 11, cursor: "pointer", padding: "2px 4px" }} title="Modifier les clés">⚙</button>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              {["Config","Facture","Revue","Créé"].map((label, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff", background: step > i+1 ? "#22c55e" : step === i+1 ? "#f59e0b" : "#2e3f5c", boxShadow: step === i+1 ? "0 0 8px #f59e0b55" : "none", transition: "all 0.3s" }}>
+                    {step > i+1 ? "✓" : i+1}
+                  </div>
+                  <span style={{ fontSize: 9, color: "#cbd5e1", opacity: step === i+1 ? 1 : 0.3 }}>{label}</span>
+                  {i < 3 && <span style={{ color: "#2e3f5c", fontSize: 9, margin: "0 1px" }}>—</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Indicateur tickets en attente */}
+          {(() => {
+            const now = new Date();
+            const cle = `bx_tickets_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+            const tickets = JSON.parse(localStorage.getItem(cle) || "[]");
+            if (tickets.length === 0) return null;
+            const parEnseigne = {};
+            tickets.forEach(t => {
+              if (!parEnseigne[t.fournisseur]) parEnseigne[t.fournisseur] = { count: 0, total: 0 };
+              parEnseigne[t.fournisseur].count++;
+              parEnseigne[t.fournisseur].total += parseFloat(t.montant_ttc) || 0;
+            });
+            return (
+              <div style={{ width: "100%", maxWidth: 500, marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {Object.entries(parEnseigne).map(([enseigne, info]) => (
+                  <div key={enseigne} onClick={() => setStep(5)} style={{ background: "#162639", border: "1px solid #2a3a58", borderRadius: 20, padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 10, color: "#f59e0b" }}>🧾</span>
+                    <span style={{ fontSize: 10, color: "#fff", fontWeight: 600 }}>{enseigne}</span>
+                    <span style={{ fontSize: 10, color: "#cbd5e1" }}>{info.count}×</span>
+                    <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700 }}>{fCHF(info.total)}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          <div style={S.card}>
+            {/* Étape 1 — Token */}
+            {step === 1 && (
+              <div style={S.section}>
+                <h2 style={S.title}>Connexion</h2>
+                <p style={S.subtitle}>Renseigne tes deux clés API pour commencer</p>
+
+                <label style={S.label}>Clé API Anthropic (Claude)</label>
+                <input
+                  type="password"
+                  placeholder="sk-ant-api03-..."
+                  value={anthropicKey}
+                  onChange={e => setAnthropicKey(e.target.value)}
+                  style={{ ...S.input, marginBottom: 16 }}
+                />
+                <p style={{ fontSize: 10, color: "#cbd5e1", marginTop: -10, marginBottom: 16 }}>
+                  → <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={S.link}>console.anthropic.com</a> › API Keys
+                </p>
+
+                <label style={S.label}>Token bexio (Personal Access Token)</label>
+                <input
+                  type="password"
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && saveToken()}
+                  style={S.input}
+                />
+                <p style={{ fontSize: 10, color: "#cbd5e1", marginTop: -10, marginBottom: 16 }}>
+                  → <a href="https://developer.bexio.com/pat" target="_blank" rel="noreferrer" style={S.link}>developer.bexio.com/pat</a>
+                </p>
+                <button onClick={saveToken} disabled={!token.trim() || !anthropicKey.trim()} style={{ ...S.btn, opacity: token.trim() && anthropicKey.trim() ? 1 : 0.35 }}>
+                  Continuer →
+                </button>
+                <p style={S.hint}>Clés stockées uniquement dans le navigateur.</p>
+
+                <label style={{ ...S.label, marginTop: 20 }}>N° de départ du mois en cours</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ color: "#cbd5e1", fontSize: 12 }}>g{MOIS_FR[new Date().getMonth()]}{String(new Date().getFullYear()).slice(-2)}/</span>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="001"
+                    value={numeroDepart}
+                    onChange={e => setNumeroDepart(e.target.value)}
+                    style={{ ...S.input, width: 80 }}
+                  />
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const cle = `bx_compteur_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+                      const n = parseInt(numeroDepart, 10);
+                      if (n > 0) { localStorage.setItem(cle, String(n - 1)); setNumeroDepart(""); }
+                    }}
+                    disabled={!numeroDepart}
+                    style={{ ...S.btn, padding: "8px 14px", fontSize: 12, opacity: numeroDepart ? 1 : 0.35 }}
+                  >
+                    Fixer
+                  </button>
+                </div>
+                <p style={S.hint}>Le prochain scan portera ce numéro, puis la suite s'incrémente seule. À refaire chaque début de mois.</p>
+              </div>
+            )}
+
+            {/* Étape 2 — Upload */}
+            {step === 2 && (
+              <div style={S.section}>
+                <h2 style={S.title}>Importer la facture</h2>
+                <p style={S.subtitle}>Image ou PDF — QR-facture supportée</p>
+                <div
+                  style={{ ...S.dropzone, borderColor: (file || pages.length) ? "#f59e0b" : "#2a3a58", cursor: "pointer" }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={onDrop}
+                  onClick={() => fileRef.current.click()}
+                >
+                  {file && pages.length === 0 ? (
+                    <div>
+                      <div style={{ fontSize: 40, marginBottom: 8 }}>📄</div>
+                      <p style={{ color: "#ffffff", fontSize: 12, fontWeight: 600, margin: 0 }}>{file.name}</p>
+                      <p style={{ color: "#cbd5e1", fontSize: 10, marginTop: 4, marginBottom: 0 }}>Touche pour changer</p>
+                    </div>
+                  ) : pages.length > 0 ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }} onClick={e => e.stopPropagation()}>
+                      {pages.map((p, i) => (
+                        <div key={p.id} style={{ position: "relative", width: 72 }}>
+                          <img src={p.url} alt="" style={{ width: 72, height: 96, objectFit: "cover", borderRadius: 6, opacity: p.processing ? 0.4 : 1, display: "block" }} />
+                          <span style={{ position: "absolute", top: 2, left: 2, background: "#0a1220cc", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 4 }}>{i + 1}</span>
+                          <button onClick={() => removePage(p.id)} style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", border: "none", background: "#ef4444", color: "#fff", fontSize: 11, lineHeight: "18px", cursor: "pointer", padding: 0 }}>✕</button>
+                        </div>
+                      ))}
+                      <div onClick={() => fileRef.current.click()} style={{ width: 72, height: 96, borderRadius: 6, border: "1px dashed #2e3f5c", display: "flex", alignItems: "center", justifyContent: "center", color: "#cbd5e1", fontSize: 22, cursor: "pointer" }}>+</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 32, color: "#2e3f5c", marginBottom: 10 }}>↑</div>
+                      <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.6, margin: 0 }}>Touche pour choisir une facture<br />(photo ou PDF)</p>
+                    </div>
+                  )}
+                </div>
+                {pages.length > 0 && (
+                  <p style={{ color: "#cbd5e1", fontSize: 10, textAlign: "center", margin: "6px 0 0" }}>
+                    {pages.length > 1 ? `${pages.length} pages — ` : ""}touche "+" pour ajouter une page
+                  </p>
+                )}
+                {scanInfo && (
+                  <p style={{ color: "#cbd5e1", fontSize: 11, textAlign: "center", margin: "8px 0 0" }}>
+                    {scanInfo}
+                    {pages.length > 0 && pages[pages.length - 1].raw && (
+                      <button onClick={useOriginalPhoto} style={{ background: "none", border: "none", color: "#f59e0b", fontSize: 11, textDecoration: "underline", cursor: "pointer", marginLeft: 6, padding: 0 }}>
+                        ↺ dernière page : originale
+                      </button>
+                    )}
+                  </p>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={e => handleFile(e.target.files[0])}
+                />
+                {error && <p style={S.error}>{error}</p>}
+                <button onClick={startAnalysis} disabled={(!file && pages.length === 0) || loading || scanning} style={{ ...S.btn, opacity: (file || pages.length) && !loading && !scanning ? 1 : 0.35 }}>
+                  {scanning ? "Détection des bords…" : loading ? loadingMsg : "Analyser avec Claude →"}
+                </button>
+              </div>
+            )}
+
+            {/* Étape 3 — Revue */}
+            {step === 3 && data && (
+              <div style={S.section}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h2 style={S.title}>Vérification</h2>
+                  <div style={{ ...S.badge, background: data.confiance === "haute" ? "#14532d" : data.confiance === "moyenne" ? "#713f12" : "#450a0a", color: data.confiance === "haute" ? "#86efac" : data.confiance === "moyenne" ? "#fde047" : "#fca5a5" }}>
+                    {data.confiance}
+                  </div>
+                </div>
+                <div style={S.grid}>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>N° interne</div>
+                    <input
+                      type="text"
+                      value={data.numero_interne || ""}
+                      onChange={e => setData(d => ({ ...d, numero_interne: e.target.value }))}
+                      style={{ ...S.select, padding: "6px 8px", fontSize: 12, color: "#f59e0b", fontWeight: 600, width: "100%" }}
+                    />
+                  </div>
+                  <Field label="Fournisseur" value={data.fournisseur} />
+                  <div style={{ gridColumn: "auto" }}>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>N° facture fournisseur</div>
+                    <input
+                      type="text"
+                      value={data.numero_facture || ""}
+                      onChange={e => setData({ ...data, numero_facture: e.target.value })}
+                      style={{ ...S.select, padding: "6px 8px", fontSize: 12 }}
+                      placeholder="ex: 87729831"
+                    />
+                  </div>
+                  <Field label="N° facture" value={data.numero_facture} />
+                  <div>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Date</div>
+                    <input
+                      type="date"
+                      value={(() => { const p = (data.date_facture || "").split("."); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : ""; })()}
+                      onChange={e => {
+                        const [y, m, day] = e.target.value.split("-");
+                        setData(d => ({ ...d, date_facture: y ? `${day}.${m}.${y}` : "" }));
+                      }}
+                      style={{ ...S.select, padding: "6px 8px", fontSize: 12 }}
+                    />
+                  </div>
+                  {data.date_echeance && <Field label="Échéance" value={data.date_echeance} accent />}
+                  {data.date_reglement && <Field label="Règlement" value={data.date_reglement} />}
+                  <Field label="Devise" value={data.devise} />
+                  <Field label="Description" value={data.description} span />
+                  {data.reference_qr && <Field label="Réf. QR" value={data.reference_qr} span />}
+                  {data.iban && <Field label="IBAN" value={data.iban} span />}
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={S.label}>
+                    Ligne(s) TVA {data.lignes_tva.length > 1 ? `(${data.lignes_tva.length} taux différents)` : ""}
+                  </label>
+                  {data.lignes_tva.map((l, i) => (
+                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6, background: "#101e33", border: "1px solid #2a3a58", borderRadius: 8, padding: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 2 }}>Montant HT</div>
+                        <input
+                          type="number" step="0.01" value={l.montant_ht}
+                          onChange={e => updateLigne(i, { montant_ht: parseFloat(e.target.value) || 0, montant_tva: Math.round(((parseFloat(e.target.value) || 0) * l.taux_tva) / 100 * 100) / 100 })}
+                          style={{ ...S.select, padding: "6px 8px", fontSize: 12 }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 2 }}>Compte</div>
+                        <select
+                          value={l.compte_code || data.compte_suggere_code || ""}
+                          onChange={e => updateLigne(i, { compte_code: e.target.value })}
+                          style={{ ...S.select, padding: "6px 8px", fontSize: 12 }}
+                        >
+                          <option value="">— compte global —</option>
+                          {accounts.map(a => <option key={a.code} value={a.code}>{a.code} – {a.label}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 2 }}>Taux TVA</div>
+                        <select value={l.taux_tva} onChange={e => ligneTauxChange(i, parseFloat(e.target.value))} style={{ ...S.select, padding: "6px 8px", fontSize: 12 }}>
+                          {TVA_CH.map(t => <option key={t.taux} value={t.taux}>{t.label}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 2 }}>Montant TVA</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#f59e0b", padding: "6px 0" }}>{fCHF(l.montant_tva)}</div>
+                      </div>
+                      {data.lignes_tva.length > 1 && (
+                        <button onClick={() => removeLigne(i)} style={{ background: "none", border: "none", color: "#fca5a5", fontSize: 16, cursor: "pointer", padding: "0 4px" }}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={addLigne} style={{ background: "none", border: "1px dashed #2a3a58", color: "#cbd5e1", fontSize: 11, borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
+                    + Ajouter un taux de TVA
+                  </button>
+                </div>
+                <div style={S.grid}>
+                  <Field label="Total HT" value={fCHF(totals(data).ht)} accent />
+                  <Field label="Total TVA" value={fCHF(totals(data).tva)} />
+                  <Field label="Total TTC" value={fCHF(totals(data).ttc)} accent />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={S.label}>Compte de charge par défaut <span style={{ color: "#cbd5e1", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— utilisé si une ligne n'a pas de compte propre</span></label>
+                  <select value={selectedAccount?.code || ""} onChange={e => setSelectedAccount(accounts.find(a => a.code === e.target.value) || null)} style={S.select}>
+                    <option value="">— Choisir un compte —</option>
+                    {accounts.map(a => <option key={a.code} value={a.code}>{a.code} – {a.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={S.label}>Date de règlement (paiement effectif)</label>
+                  <input type="date" value={dateReglement} onChange={e => { if (e.target.value) setDateReglement(e.target.value); }} style={{ ...S.select, padding: "8px 10px" }} />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={S.label}>Mode de paiement</label>
+                  <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} style={S.select}>
+                    <option value="QR">QR-facture (virement QR)</option>
+                    <option value="IBAN">Virement IBAN</option>
+                    <option value="MANUAL">Manuel (cash / CB / TWINT / chèque)</option>
+                  </select>
+                </div>
+                {error && <p style={S.error}>{error}</p>}
+                <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
+                  <button onClick={reset} style={S.btnGhost}>← Recommencer</button>
+                  <button onClick={() => createInBexio()} disabled={!selectedAccount || loading} style={{ ...S.btn, flex: 1, marginTop: 0, opacity: selectedAccount && !loading ? 1 : 0.35 }}>
+                    {loading ? loadingMsg : "Créer l'écriture →"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Étape 4 — Succès */}
+            {step === 4 && result && (
+              <div style={{ ...S.section, textAlign: "center" }}>
+                <div style={S.successIcon}>✓</div>
+                <h2 style={{ ...S.title, marginTop: 14 }}>Écriture créée !</h2>
+                <p style={S.subtitle}>Facture fournisseur enregistrée dans bexio.</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 14, background: "#101e33", borderRadius: 10, border: "1px solid #2a3a58", margin: "14px 0 0", textAlign: "left" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#cbd5e1", fontSize: 11 }}>N° interne</span>
+                    <span style={{ color: "#f59e0b", fontFamily: "monospace", fontSize: 16, fontWeight: 700 }}>{result.numeroInterne}</span>
+                  </div>
+                  <div style={{ borderTop: "1px solid #2a3a58", paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#cbd5e1", fontSize: 11 }}>ID bexio</span>
+                    <span style={{ color: "#f59e0b", fontFamily: "monospace", fontSize: 18 }}>#{result.id}</span>
+                  </div>
+                  <div style={{ borderTop: "1px solid #2a3a58", paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#cbd5e1", fontSize: 11 }}>Pièce jointe</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: result.pjOk ? "#86efac" : "#fca5a5" }}>
+                      {result.pjOk ? "✓ Attachée" : "⚠ Non attachée"}
+                    </span>
+                  </div>
+                  {!result.pjOk && (
+                    <p style={{ color: "#64748b", fontSize: 10, margin: 0 }}>
+                      L'écriture est créée. Attache manuellement la facture depuis bexio si nécessaire.
+                    </p>
+                  )}
+                  {uploadError && (
+                    <p style={{ color: "#fca5a5", fontSize: 9, wordBreak: "break-all", margin: 0, borderTop: "1px solid #2a3a58", paddingTop: 8 }}>
+                      {uploadError}
+                    </p>
+                  )}
+                </div>
+                <a href={result.url} target="_blank" rel="noreferrer" style={S.btnLink}>Voir dans bexio →</a>
+                <br />
+                <button onClick={reset} style={{ ...S.btnGhost, marginTop: 12 }}>Scanner une autre facture</button>
+              </div>
+            )}
+            {/* Étape 5 — Ticket mis en attente */}
+            {step === 5 && (() => {
+              const now = new Date();
+              const cleTickets = `bx_tickets_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              const tickets = JSON.parse(localStorage.getItem(cleTickets) || "[]");
+              const parEnseigne = {};
+              tickets.forEach(t => {
+                const k = t.fournisseur;
+                if (!parEnseigne[k]) parEnseigne[k] = { total: 0, count: 0 };
+                parEnseigne[k].total += parseFloat(t.montant_ttc) || 0;
+                parEnseigne[k].count++;
+              });
+
+              async function consoliderMois() {
+                if (tickets.length === 0) return;
+                setLoading(true);
+                setLoadingMsg("Consolidation en cours…");
+                try {
+                  for (const [enseigne, info] of Object.entries(parEnseigne)) {
+                    const ticketsEnseigne = tickets.filter(t => t.fournisseur === enseigne);
+                    const lignesGroupees = {};
+                    ticketsEnseigne.forEach(t => (t.lignes_tva || []).forEach(l => {
+                      const k = String(l.taux_tva);
+                      if (!lignesGroupees[k]) lignesGroupees[k] = { taux_tva: l.taux_tva, montant_ht: 0, montant_tva: 0 };
+                      lignesGroupees[k].montant_ht += parseFloat(l.montant_ht) || 0;
+                      lignesGroupees[k].montant_tva += parseFloat(l.montant_tva) || 0;
+                    }));
+                    const dc = new Date(dateConsolidation);
+                    const moisNom = MOIS_FR[dc.getMonth()];
+                    const annee = String(dc.getFullYear()).slice(-2);
+                    const dateStr = `${String(dc.getDate()).padStart(2,"0")}.${String(dc.getMonth()+1).padStart(2,"0")}.${dc.getFullYear()}`;
+                    const fakeData = {
+                      fournisseur: enseigne,
+                      date_facture: dateStr,
+                      numero_facture: `tickets-${moisNom}${annee}`,
+                      description: `Achats ${enseigne} — ${moisNom} 20${annee} (${info.count} ticket${info.count > 1 ? "s" : ""})`,
+                      lignes_tva: Object.values(lignesGroupees),
+                      montant_ttc: info.total,
+                      devise: "CHF",
+                      reference_qr: null,
+                      iban: null,
+                      compte_suggere_code: ticketsEnseigne[0]?.compte_suggere_code || "4200",
+                      numero_interne: genererNumeroFacture(),
+                    };
+                    const accForTicket = accounts.find(a => a.code === fakeData.compte_suggere_code) || null;
+                    const filesForTicket = ticketsEnseigne.map(t => t.fichier).filter(Boolean);
+                    await createInBexio(fakeData, accForTicket, "MANUAL", filesForTicket);
+                  }
+                  localStorage.removeItem(cleTickets);
+                  setStep(4);
+                } catch(e) {
+                  setError("Erreur consolidation : " + e.message);
+                } finally {
+                  setLoading(false);
+                  setLoadingMsg("");
+                }
+              }
+
+              return (
+                <div style={{ ...S.section, textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 8 }}>🧾</div>
+                  <h2 style={S.title}>Ticket mis en attente</h2>
+                  <p style={S.subtitle}>Ce ticket sera consolidé en fin de mois avec les autres achats du même fournisseur.</p>
+                  <div style={{ background: "#101e33", border: "1px solid #2a3a58", borderRadius: 10, padding: 14, margin: "14px 0", textAlign: "left" }}>
+                    <div style={{ fontSize: 10, color: "#cbd5e1", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Tickets en attente ce mois</div>
+                    {Object.entries(parEnseigne).map(([enseigne, info]) => (
+                      <div key={enseigne} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #2a3a58" }}>
+                        <span style={{ color: "#ffffff", fontSize: 13 }}>{enseigne} <span style={{ color: "#cbd5e1", fontSize: 11 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
+                        <span style={{ color: "#f59e0b", fontWeight: 700 }}>{fCHF(info.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {error && <p style={S.error}>{error}</p>}
+                  <div style={{ marginBottom: 12, textAlign: "left" }}>
+                    <label style={S.label}>Date de consolidation</label>
+                    <input type="date" value={dateConsolidation} onChange={e => setDateConsolidation(e.target.value)} style={{ ...S.select, padding: "8px 10px" }} />
+                  </div>
+                  <button onClick={consoliderMois} disabled={loading || tickets.length === 0} style={{ ...S.btn, marginBottom: 8, opacity: tickets.length > 0 && !loading ? 1 : 0.35 }}>
+                    {loading ? loadingMsg : `Consolider maintenant (${tickets.length} ticket${tickets.length > 1 ? "s" : ""})`}
+                  </button>
+                  <button onClick={reset} style={S.btnGhost}>Scanner un autre ticket</button>
+                </div>
+              );
+            })()}
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
