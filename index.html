@@ -319,6 +319,10 @@
       const [paymentMode, setPaymentMode] = useState("virement");
       const [dateReglement, setDateReglement] = useState(() => new Date().toISOString().split("T")[0]);
       const [result, setResult] = useState(null);
+      const [dateConsolidation, setDateConsolidation] = useState(() => {
+        const now2 = new Date();
+        return `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}-${String(now2.getDate()).padStart(2,"0")}`;
+      });
       const fileRef = useRef();
 
       function saveToken() {
@@ -1060,11 +1064,6 @@ Important : pour chaque ticket/facture, si plusieurs taux de TVA sont présents,
                 if (!parEnseigne[k]) parEnseigne[k] = { total: 0, count: 0 };
                 parEnseigne[k].total += parseFloat(t.montant_ttc) || 0;
                 parEnseigne[k].count++;
-              });
-
-              const [dateConsolidation, setDateConsolidation] = React.useState(() => {
-                const now2 = new Date();
-                return `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}-${String(now2.getDate()).padStart(2,"0")}`;
               });
 
               async function consoliderMois() {
