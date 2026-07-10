@@ -13,8 +13,10 @@
   <link rel="apple-touch-icon" href="./icon-192.png" />
 
   <script>
+    // sw.js interceptait mal les requêtes vers /bexio-proxy (fetch qui ne se résout jamais → blocage
+    // silencieux de la consolidation). On ne l'enregistre plus, et on désinstalle celui déjà présent.
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
     }
   </script>
 </head>
@@ -434,17 +436,25 @@
       });
       const format = file.type.includes("png") ? "PNG" : "JPEG";
       const { jsPDF } = window.jspdf;
-      // Tentative en pleine résolution/qualité d'abord — pas de perte de qualité si le fichier tient déjà sous la limite.
+      // Page A4 fixe avec l'image centrée dedans (marge 8mm) — évite les pages à la taille brute en pixels
+      // de la photo (des dizaines de cm/mètres), qui obligeaient à zoomer/scroller énormément pour tout voir.
+      const A4_W = 210, A4_H = 297, MARGE = 8;
       const construire = (w, h, qualite) => {
-        const doc = new jsPDF({ orientation: w > h ? "l" : "p", unit: "px", format: [w, h] });
-        if (qualite === null) {
-          doc.addImage(dataUrl, format, 0, 0, w, h);
-        } else {
+        const orientation = w > h ? "l" : "p";
+        const pageW = orientation === "l" ? A4_H : A4_W;
+        const pageH = orientation === "l" ? A4_W : A4_H;
+        const zoneW = pageW - MARGE * 2, zoneH = pageH - MARGE * 2;
+        const echelle = Math.min(zoneW / w, zoneH / h);
+        const finalW = w * echelle, finalH = h * echelle;
+        const offsetX = (pageW - finalW) / 2, offsetY = (pageH - finalH) / 2;
+        const doc = new jsPDF({ orientation, unit: "mm", format: [pageW, pageH] });
+        const source = qualite === null ? dataUrl : (() => {
           const canvas = document.createElement("canvas");
           canvas.width = w; canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          doc.addImage(canvas.toDataURL("image/jpeg", qualite), "JPEG", 0, 0, w, h);
-        }
+          return canvas.toDataURL("image/jpeg", qualite);
+        })();
+        doc.addImage(source, qualite === null ? format : "JPEG", offsetX, offsetY, finalW, finalH);
         return doc.output("datauristring").split(",")[1];
       };
       let b64 = construire(img.width, img.height, null);
@@ -479,10 +489,14 @@
             canvas.width = viewport.width; canvas.height = viewport.height;
             await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
             const jpeg = canvas.toDataURL("image/jpeg", 0.75);
-            const orientation = viewport.width > viewport.height ? "l" : "p";
-            if (!out) out = new jsPDF({ orientation, unit: "px", format: [viewport.width, viewport.height] });
-            else out.addPage([viewport.width, viewport.height], orientation);
-            out.addImage(jpeg, "JPEG", 0, 0, viewport.width, viewport.height);
+            // viewport.width/height sont en pixels pour l'échelle "scale" — on revient aux points (taille physique
+            // réelle de la page d'origine) pour ne pas produire une page géante à l'échelle brute des pixels.
+            const pageWpt = viewport.width / scale;
+            const pageHpt = viewport.height / scale;
+            const orientation = pageWpt > pageHpt ? "l" : "p";
+            if (!out) out = new jsPDF({ orientation, unit: "pt", format: [pageWpt, pageHpt] });
+            else out.addPage([pageWpt, pageHpt], orientation);
+            out.addImage(jpeg, "JPEG", 0, 0, pageWpt, pageHpt);
           }
           const nouveauBlob = out.output("blob");
           if (nouveauBlob.size <= LIMITE_BEXIO_OCTETS) return nouveauBlob;
@@ -789,17 +803,24 @@
       /* Assemble toutes les pages scannées en un seul PDF multi-pages */
       async function buildPdfFromPages(pagesList) {
         const { jsPDF } = window.jspdf;
+        const A4_W = 210, A4_H = 297, MARGE = 8;
         let doc = null;
         for (let i = 0; i < pagesList.length; i++) {
           const dataUrl = await fileToDataURL(pagesList[i].blob);
           const img = await loadImageElement(dataUrl);
           const orientation = img.width > img.height ? "l" : "p";
+          const pageW = orientation === "l" ? A4_H : A4_W;
+          const pageH = orientation === "l" ? A4_W : A4_H;
+          const zoneW = pageW - MARGE * 2, zoneH = pageH - MARGE * 2;
+          const echelle = Math.min(zoneW / img.width, zoneH / img.height);
+          const finalW = img.width * echelle, finalH = img.height * echelle;
+          const offsetX = (pageW - finalW) / 2, offsetY = (pageH - finalH) / 2;
           if (i === 0) {
-            doc = new jsPDF({ orientation, unit: "px", format: [img.width, img.height] });
+            doc = new jsPDF({ orientation, unit: "mm", format: [pageW, pageH] });
           } else {
-            doc.addPage([img.width, img.height], orientation);
+            doc.addPage([pageW, pageH], orientation);
           }
-          doc.addImage(dataUrl, "JPEG", 0, 0, img.width, img.height);
+          doc.addImage(dataUrl, "JPEG", offsetX, offsetY, finalW, finalH);
         }
         const base64 = doc.output("datauristring").split(",")[1];
         const bin = atob(base64);
@@ -1713,9 +1734,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       ticketsEnseigne.map(t => t.ficId ? idbGetFichier(t.ficId) : t.fichier)
                     )).filter(Boolean);
                     await createInBexio(fakeData, accForTicket, "MANUAL", filesForTicket);
+                    // Retire CETTE enseigne de la file dès sa création réussie — si une enseigne suivante
+                    // échoue, celles déjà créées ne restent pas à tort en attente (risque de doublon sinon).
+                    await Promise.all(ticketsEnseigne.map(t => t.ficId ? idbDeleteFichier(t.ficId) : Promise.resolve()));
+                    const restants = JSON.parse(localStorage.getItem(cleTickets) || "[]").filter(t => t.fournisseur !== enseigne);
+                    localStorage.setItem(cleTickets, JSON.stringify(restants));
                   }
-                  await Promise.all(tickets.map(t => t.ficId ? idbDeleteFichier(t.ficId) : Promise.resolve()));
-                  localStorage.removeItem(cleTickets);
                   setStep(4);
                 } catch(e) {
                   setError("Erreur consolidation : " + e.message);
