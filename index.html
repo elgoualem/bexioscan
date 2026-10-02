@@ -29,7 +29,7 @@
     button:focus-visible, a:focus-visible { outline: 2px solid #F5A524; outline-offset: 2px; }
     input::placeholder { color: #5f7391; }
     input[type="date"] { color-scheme: dark; min-height: 52px; }
-    select option { background: #0D1526; color: #fff; }
+    select option { background: #121C33; color: #fff; }
     button { transition: transform .08s ease, filter .15s ease, opacity .15s ease; }
     button:not(:disabled):hover { filter: brightness(1.1); }
     button:not(:disabled):active { transform: scale(.98); }
@@ -1375,23 +1375,23 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
       const S = {
         root: { minHeight: "100svh", display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top, 0px) + 20px) 20px 56px", fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", color: "#F2F5FA" },
         header: { width: "100%", maxWidth: 520, marginBottom: 22, display: "flex", flexDirection: "column", gap: 22 },
-        card: { width: "100%", maxWidth: 520, background: "#111A2C", border: "1px solid #1F2D47", borderRadius: 20, overflow: "hidden" },
+        card: { width: "100%", maxWidth: 520, background: "#1A2744", border: "1px solid #2F4468", borderRadius: 20, overflow: "hidden" },
         section: { padding: "26px 20px 22px" },
         title: { margin: "0 0 6px", fontSize: 28, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15 },
         subtitle: { margin: "0 0 22px", fontSize: 15, color: "#A3B1C7", lineHeight: 1.5 },
         label: { display: "block", fontSize: 12, fontWeight: 600, color: "#8FA0BA", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 },
         miniLabel: MINI_LABEL,
-        input: { width: "100%", background: "#0D1526", border: "1px solid #2C3E5E", borderRadius: 12, padding: "12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 14, WebkitAppearance: "none", appearance: "none", minHeight: 52 },
-        select: { width: "100%", background: "#0D1526", border: "1px solid #2C3E5E", borderRadius: 12, padding: "12px 44px 12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer", WebkitAppearance: "none", appearance: "none", minHeight: 52, backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 16px center", textOverflow: "ellipsis" },
+        input: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 14, WebkitAppearance: "none", appearance: "none", minHeight: 52 },
+        select: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 44px 12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer", WebkitAppearance: "none", appearance: "none", minHeight: 52, backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 16px center", textOverflow: "ellipsis" },
         btn: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "#F5A524", border: "none", borderRadius: 14, padding: "0 18px", color: "#1A1200", fontFamily: "inherit", fontSize: 16, fontWeight: 700, cursor: "pointer", marginTop: 10, WebkitAppearance: "none", minHeight: 56 },
-        btnGhost: { background: "transparent", border: "1px solid #2C3E5E", borderRadius: 14, padding: "0 18px", color: "#C5D0E2", fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer", minHeight: 52 },
+        btnGhost: { background: "transparent", border: "1px solid #3A5073", borderRadius: 14, padding: "0 18px", color: "#C5D0E2", fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer", minHeight: 52 },
         btnLink: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "#F5A524", borderRadius: 14, padding: "0 26px", color: "#1A1200", fontFamily: "inherit", fontSize: 16, fontWeight: 700, textDecoration: "none", marginTop: 18, minHeight: 56 },
         hint: { fontSize: 13, color: "#8FA0BA", marginTop: 10, textAlign: "center", lineHeight: 1.5 },
         link: { color: "#F5A524", textDecoration: "none", fontWeight: 500 },
         error: { color: "#FCA5A5", fontSize: 13, lineHeight: 1.5, background: "#3A1414", border: "1px solid #7F1D1D", borderRadius: 12, padding: "12px 14px", marginTop: 12 },
-        dropzone: { border: "2px dashed", borderRadius: 20, padding: "34px 16px", cursor: "pointer", transition: "border-color 0.3s", marginBottom: 14, textAlign: "center", background: "#0D1526" },
-        grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 14px", marginBottom: 18, padding: "20px", background: "#0D1526", borderRadius: 16, border: "1px solid #1F2D47" },
-        card2: { background: "#0D1526", border: "1px solid #1F2D47", borderRadius: 16 },
+        dropzone: { border: "2px dashed", borderRadius: 20, padding: "34px 16px", cursor: "pointer", transition: "border-color 0.3s", marginBottom: 14, textAlign: "center", background: "#121C33" },
+        grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 14px", marginBottom: 18, padding: "20px", background: "#121C33", borderRadius: 16, border: "1px solid #2F4468" },
+        card2: { background: "#121C33", border: "1px solid #2F4468", borderRadius: 16 },
         badge: { fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 20, letterSpacing: "0.04em", textTransform: "uppercase" },
         successIcon: { width: 76, height: 76, borderRadius: "50%", background: "#0F3B2E", border: "2px solid #34D399", color: "#6EE7B7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" },
       };
@@ -1406,7 +1406,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <span style={{ fontSize: 21, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>bexio<span style={{ color: "#F5A524" }}>scan</span></span>
               </div>
               {step > 1 && (
-                <button onClick={() => setStep(1)} style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#111A2C", border: "1px solid #2C3E5E", borderRadius: 12, color: "#C5D0E2", cursor: "pointer", padding: 0 }} title="Modifier les clés" aria-label="Réglages"><IcoSliders s={20} /></button>
+                <button onClick={() => setStep(1)} style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#1A2744", border: "1px solid #3A5073", borderRadius: 12, color: "#C5D0E2", cursor: "pointer", padding: 0 }} title="Modifier les clés" aria-label="Réglages"><IcoSliders s={20} /></button>
               )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
@@ -1437,7 +1437,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             return (
               <div style={{ width: "100%", maxWidth: 520, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {Object.entries(parEnseigne).map(([enseigne, info]) => (
-                  <button key={enseigne} onClick={() => setStep(5)} style={{ background: "#111A2C", border: "1px solid #2C3E5E", borderRadius: 19, padding: "0 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 38, color: "#F2F5FA", fontSize: 13 }}>
+                  <button key={enseigne} onClick={() => setStep(5)} style={{ background: "#1A2744", border: "1px solid #3A5073", borderRadius: 19, padding: "0 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 38, color: "#F2F5FA", fontSize: 13 }}>
                     <span style={{ color: "#F5A524", display: "flex" }}><IcoReceipt s={14} /></span>
                     <span style={{ fontWeight: 700 }}>{enseigne}</span>
                     <span style={{ color: "#A3B1C7" }}>{info.count}×</span>
@@ -1484,7 +1484,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </button>
                 <p style={S.hint}>Clés stockées uniquement dans le navigateur.</p>
 
-                <div style={{ borderTop: "1px solid #1F2D47", margin: "26px 0 20px" }} />
+                <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
                 <label style={S.label}>Mois de numérotation</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <select
@@ -1557,9 +1557,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }} onClick={e => e.stopPropagation()}>
                       {pages.map((p, i) => (
                         <div key={p.id} style={{ position: "relative", width: 92 }}>
-                          <img src={p.url} alt="" style={{ width: 92, height: 124, objectFit: "cover", borderRadius: 8, border: "1px solid #2C3E5E", opacity: p.processing ? 0.4 : 1, display: "block" }} />
+                          <img src={p.url} alt="" style={{ width: 92, height: 124, objectFit: "cover", borderRadius: 8, border: "1px solid #3A5073", opacity: p.processing ? 0.4 : 1, display: "block" }} />
                           <span style={{ position: "absolute", bottom: 4, left: 4, background: "#0a1220dd", color: "#fff", fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 6 }}>{i + 1}</span>
-                          <button onClick={() => removePage(p.id)} aria-label="Retirer la page" style={{ position: "absolute", top: -18, right: -18, width: 44, height: 44, padding: 0, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><span style={{ width: 26, height: 26, borderRadius: 13, background: "#EF4444", border: "2px solid #0D1526", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><IcoX s={12} sw={3} /></span></button>
+                          <button onClick={() => removePage(p.id)} aria-label="Retirer la page" style={{ position: "absolute", top: -18, right: -18, width: 44, height: 44, padding: 0, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><span style={{ width: 26, height: 26, borderRadius: 13, background: "#EF4444", border: "2px solid #121C33", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><IcoX s={12} sw={3} /></span></button>
                         </div>
                       ))}
                       <div onClick={() => fileRef.current.click()} style={{ width: 92, height: 124, borderRadius: 8, border: "2px dashed #3A5073", display: "flex", alignItems: "center", justifyContent: "center", color: "#A3B1C7", fontSize: 28, cursor: "pointer" }}><IcoPlus s={28} /></div>
@@ -1694,7 +1694,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           {TVA_CH.map(t => <option key={t.taux} value={t.taux}>{t.label}</option>)}
                         </select>
                       </div>
-                      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 12, borderTop: "1px solid #1F2D47" }}>
+                      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 12, borderTop: "1px solid #2F4468" }}>
                         <span style={{ ...MINI_LABEL, marginBottom: 0 }}>Montant TVA</span>
                         <span style={{ fontSize: 17, fontWeight: 700, color: "#F5A524" }}>{fCHF(l.montant_tva)}</span>
                       </div>
@@ -1706,7 +1706,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </div>
                 <div style={{ ...S.card2, padding: "6px 18px", marginBottom: 18 }}>
                   {[["Total HT", totals(data).ht, false], ["Total TVA", totals(data).tva, false], ["Total TTC", totals(data).ttc, true]].map(([lib, val, fort], i) => (
-                    <div key={lib} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: fort ? "14px 0 12px" : "12px 0", borderTop: i ? "1px solid #1F2D47" : "none" }}>
+                    <div key={lib} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: fort ? "14px 0 12px" : "12px 0", borderTop: i ? "1px solid #2F4468" : "none" }}>
                       <span style={{ fontSize: fort ? 14 : 13, fontWeight: fort ? 700 : 500, color: fort ? "#fff" : "#A3B1C7" }}>{lib}</span>
                       <span style={{ fontSize: fort ? 22 : 15, fontWeight: 700, color: fort ? "#F5A524" : "#fff", letterSpacing: "-0.01em" }}>{fCHF(val)}</span>
                     </div>
@@ -1757,11 +1757,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     <span style={{ color: "#A3B1C7", fontSize: 13 }}>N° interne</span>
                     <span style={{ color: "#F5A524", fontFamily: MONO, fontSize: 17, fontWeight: 700 }}>{result.numeroInterne}</span>
                   </div>
-                  <div style={{ borderTop: "1px solid #1F2D47", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ borderTop: "1px solid #2F4468", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ color: "#A3B1C7", fontSize: 13 }}>ID bexio</span>
                     <span style={{ color: "#F5A524", fontFamily: MONO, fontSize: 17, fontWeight: 700 }}>#{result.id}</span>
                   </div>
-                  <div style={{ borderTop: "1px solid #1F2D47", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ borderTop: "1px solid #2F4468", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ color: "#A3B1C7", fontSize: 13 }}>Pièce jointe</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 15, fontSize: 13, fontWeight: 700, background: result.pjOk ? "#0F3B2E" : "#3A1414", color: result.pjOk ? "#6EE7B7" : "#FCA5A5" }}>
                       {result.pjOk ? <><IcoCheck s={14} sw={3} />Attachée</> : <><IcoAlert s={14} inline={false} />Non attachée</>}
@@ -1773,7 +1773,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     </p>
                   )}
                   {uploadError && (
-                    <p style={{ color: "#FCA5A5", fontSize: 11, wordBreak: "break-all", margin: 0, borderTop: "1px solid #1F2D47", paddingTop: 10 }}>
+                    <p style={{ color: "#FCA5A5", fontSize: 11, wordBreak: "break-all", margin: 0, borderTop: "1px solid #2F4468", paddingTop: 10 }}>
                       {uploadError}
                     </p>
                   )}
@@ -1896,7 +1896,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   <div style={{ ...S.card2, padding: 16, margin: "18px 0", textAlign: "left" }}>
                     <div style={{ ...MINI_LABEL, marginBottom: 12 }}>Tickets en attente</div>
                     {Object.entries(parEnseigne).map(([enseigne, info]) => (
-                      <div key={enseigne} style={{ padding: "12px 0", borderBottom: "1px solid #1F2D47" }}>
+                      <div key={enseigne} style={{ padding: "12px 0", borderBottom: "1px solid #2F4468" }}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
                           <span style={{ color: "#ffffff", fontSize: 15, fontWeight: 600 }}>{enseigne} <span style={{ color: "#A3B1C7", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
                           <span style={{ color: "#F5A524", fontWeight: 700, fontSize: 15 }}>{fCHF(info.total)}</span>
@@ -1918,7 +1918,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           const compteActuel = comptesTicketsOverrides[ovKey] || l.compte_code;
                           const compteInfo = accounts.find(a => a.code === compteActuel);
                           return (
-                            <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, background: "#0D1526", border: "1px solid #1F2D47", borderRadius: 14, padding: 14 }}>
+                            <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, background: "#121C33", border: "1px solid #2F4468", borderRadius: 14, padding: 14 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 12, color: "#A3B1C7", lineHeight: 1.4 }}>{l.description || "—"} · {l.taux_tva}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
                               </div>
@@ -1930,7 +1930,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                                   apprendreCorrection(enseigne, l.description, compteActuel, nouveauCompte, nouveauInfo?.label);
                                   setComptesTicketsOverrides(o => ({ ...o, [ovKey]: nouveauCompte }));
                                 }}
-                                style={{ ...S.select, background: "#111A2C", backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center", fontSize: 14, minHeight: 46, padding: "0 40px 0 14px", borderRadius: 10 }}
+                                style={{ ...S.select, background: "#1A2744", backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center", fontSize: 14, minHeight: 46, padding: "0 40px 0 14px", borderRadius: 10 }}
                               >
                                 {accounts.map(a => <option key={a.code} value={a.code}>{a.code} – {a.label}</option>)}
                               </select>
