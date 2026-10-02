@@ -185,6 +185,21 @@
 
     const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 
+    // Mois/année utilisés pour la numérotation (g{mois}{aa}/{seq}) — figé manuellement via les réglages,
+    // indépendant de la date système et de la date de la facture. Par défaut : mois civil en cours.
+    const CLE_MOIS_ACTIF = "bx_mois_actif";
+    function getMoisActif() {
+      try {
+        const stocke = JSON.parse(localStorage.getItem(CLE_MOIS_ACTIF) || "null");
+        if (stocke && Number.isInteger(stocke.moisIdx) && Number.isInteger(stocke.annee)) return stocke;
+      } catch (_) {}
+      const now = new Date();
+      return { moisIdx: now.getMonth(), annee: now.getFullYear() };
+    }
+    function setMoisActif(moisIdx, annee) {
+      localStorage.setItem(CLE_MOIS_ACTIF, JSON.stringify({ moisIdx, annee }));
+    }
+
     // Stockage des fichiers (base64) des tickets en attente dans IndexedDB — localStorage a un quota trop
     // faible (~5-10 Mo) pour tenir plusieurs PDF/photos, d'où le "QuotaExceededError" sur bx_tickets_*.
     function idbOpen() {
@@ -223,24 +238,23 @@
       });
     }
 
-    /* Génère le numéro interne au format g{mois}{AA}/{seq} — compteur mensuel persisté en localStorage */
+    /* Génère le numéro interne au format g{mois}{AA}/{seq} — compteur mensuel persisté en localStorage.
+       Le mois/année utilisés viennent du mois actif figé dans les réglages, pas de la date système. */
     function genererNumeroFacture() {
-      const now = new Date();
-      const mois = MOIS_FR[now.getMonth()];
-      const annee = String(now.getFullYear()).slice(-2);
-      const cle = `bx_compteur_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const { moisIdx, annee } = getMoisActif();
+      const mois = MOIS_FR[moisIdx];
+      const cle = `bx_compteur_${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
       const compteur = parseInt(localStorage.getItem(cle) || "0", 10) + 1;
       localStorage.setItem(cle, String(compteur));
-      return `g${mois}${annee}/${String(compteur).padStart(3, "0")}`;
+      return `g${mois}${String(annee).slice(-2)}/${String(compteur).padStart(3, "0")}`;
     }
 
     function peekNumeroFacture() {
-      const now = new Date();
-      const mois = MOIS_FR[now.getMonth()];
-      const annee = String(now.getFullYear()).slice(-2);
-      const cle = `bx_compteur_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const { moisIdx, annee } = getMoisActif();
+      const mois = MOIS_FR[moisIdx];
+      const cle = `bx_compteur_${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
       const compteur = parseInt(localStorage.getItem(cle) || "0", 10) + 1;
-      return `g${mois}${annee}/${String(compteur).padStart(3, "0")}`;
+      return `g${mois}${String(annee).slice(-2)}/${String(compteur).padStart(3, "0")}`;
     }
 
     // File d'attente unique des tickets, indépendante du mois — tu consolides quand tu veux, pas seulement en fin de mois.
@@ -704,6 +718,7 @@
       const [token, setToken] = useState(() => localStorage.getItem("bx_token") || "");
       const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem("bx_anthropic") || "");
       const [numeroDepart, setNumeroDepart] = useState("");
+      const [moisActif, setMoisActifState] = useState(getMoisActif);
       const [file, setFile] = useState(null);
       const [originalFile, setOriginalFile] = useState(null);
       const [pages, setPages] = useState([]);
@@ -1415,9 +1430,27 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </button>
                 <p style={S.hint}>Clés stockées uniquement dans le navigateur.</p>
 
-                <label style={{ ...S.label, marginTop: 20 }}>N° de départ du mois en cours</label>
+                <label style={{ ...S.label, marginTop: 20 }}>Mois de numérotation</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <select
+                    value={moisActif.moisIdx}
+                    onChange={e => setMoisActifState(m => ({ ...m, moisIdx: parseInt(e.target.value, 10) }))}
+                    style={{ ...S.select, flex: 2 }}
+                  >
+                    {MOIS_FR.map((m, i) => <option key={m} value={i}>{m}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    value={moisActif.annee}
+                    onChange={e => setMoisActifState(m => ({ ...m, annee: parseInt(e.target.value, 10) || m.annee }))}
+                    style={{ ...S.input, flex: 1 }}
+                  />
+                </div>
+                <p style={S.hint}>Le libellé (ex. g{MOIS_FR[moisActif.moisIdx]}{String(moisActif.annee).slice(-2)}) ne dépend ni de la date du jour ni de la date de la facture — il reste celui choisi ici tant que tu ne le changes pas.</p>
+
+                <label style={{ ...S.label, marginTop: 16 }}>N° de départ pour ce mois</label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{ color: "#cbd5e1", fontSize: 12 }}>g{MOIS_FR[new Date().getMonth()]}{String(new Date().getFullYear()).slice(-2)}/</span>
+                  <span style={{ color: "#cbd5e1", fontSize: 12 }}>g{MOIS_FR[moisActif.moisIdx]}{String(moisActif.annee).slice(-2)}/</span>
                   <input
                     type="number"
                     min="1"
@@ -1428,10 +1461,15 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   />
                   <button
                     onClick={() => {
-                      const now = new Date();
-                      const cle = `bx_compteur_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
                       const n = parseInt(numeroDepart, 10);
-                      if (n > 0) { localStorage.setItem(cle, String(n - 1)); setNumeroDepart(""); }
+                      if (n > 0) {
+                        const anneeFull = moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee;
+                        setMoisActifState(m => ({ ...m, annee: anneeFull }));
+                        setMoisActif(moisActif.moisIdx, anneeFull);
+                        const cle = `bx_compteur_${anneeFull}-${String(moisActif.moisIdx + 1).padStart(2, "0")}`;
+                        localStorage.setItem(cle, String(n - 1));
+                        setNumeroDepart("");
+                      }
                     }}
                     disabled={!numeroDepart}
                     style={{ ...S.btn, padding: "8px 14px", fontSize: 12, opacity: numeroDepart ? 1 : 0.35 }}
@@ -1439,7 +1477,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     Fixer
                   </button>
                 </div>
-                <p style={S.hint}>Le prochain scan portera ce numéro, puis la suite s'incrémente seule. À refaire chaque début de mois.</p>
+                <p style={S.hint}>La prochaine facture portera ce numéro pour le mois choisi ci-dessus, puis la suite s'incrémente seule — quelle que soit la date réelle du scan.</p>
               </div>
             )}
 
