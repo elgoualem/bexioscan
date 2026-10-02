@@ -27,7 +27,7 @@
     input, select, button, textarea { font-family: inherit; }
     input:focus, select:focus { border-color: #F5A524 !important; box-shadow: 0 0 0 3px #F5A52426; outline: none; }
     button:focus-visible, a:focus-visible { outline: 2px solid #F5A524; outline-offset: 2px; }
-    input::placeholder { color: #5f7391; }
+    input::placeholder { color: #8497B4; }
     input[type="date"] { color-scheme: dark; min-height: 52px; }
     select option { background: #121C33; color: #fff; }
     button { transition: transform .08s ease, filter .15s ease, opacity .15s ease; }
@@ -734,8 +734,8 @@
 
     // Styles partagés (hors composant App pour être utilisables dans Field)
     const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
-    const MINI_LABEL = { fontSize: 12, fontWeight: 600, color: "#8FA0BA", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 };
-    const CHEVRON = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%23A3B1C7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>\")";
+    const MINI_LABEL = { fontSize: 13, fontWeight: 700, color: "#B8C6DB", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 };
+    const CHEVRON = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' fill='none' stroke='%23D3DDEC' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>\")";
 
     // Icônes SVG (trait, couleur héritée via currentColor) — remplacent les emojis
     const Svg = ({ s = 20, sw = 2.2, style, children }) => (
@@ -1373,20 +1373,20 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
       function reset() { setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
 
       const S = {
-        root: { minHeight: "100svh", display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top, 0px) + 20px) 20px 56px", fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", color: "#F2F5FA" },
+        root: { minHeight: "100svh", display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top, 0px) + 20px) 20px 56px", fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", color: "#FFFFFF" },
         header: { width: "100%", maxWidth: 520, marginBottom: 22, display: "flex", flexDirection: "column", gap: 22 },
         card: { width: "100%", maxWidth: 520, background: "#1A2744", border: "1px solid #2F4468", borderRadius: 20, overflow: "hidden" },
         section: { padding: "26px 20px 22px" },
         title: { margin: "0 0 6px", fontSize: 28, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15 },
-        subtitle: { margin: "0 0 22px", fontSize: 15, color: "#A3B1C7", lineHeight: 1.5 },
-        label: { display: "block", fontSize: 12, fontWeight: 600, color: "#8FA0BA", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 },
+        subtitle: { margin: "0 0 22px", fontSize: 16, color: "#D3DDEC", lineHeight: 1.5 },
+        label: { display: "block", fontSize: 13, fontWeight: 700, color: "#B8C6DB", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 },
         miniLabel: MINI_LABEL,
-        input: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 14, WebkitAppearance: "none", appearance: "none", minHeight: 52 },
-        select: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 44px 12px 16px", color: "#F2F5FA", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer", WebkitAppearance: "none", appearance: "none", minHeight: 52, backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 16px center", textOverflow: "ellipsis" },
+        input: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 16px", color: "#FFFFFF", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 14, WebkitAppearance: "none", appearance: "none", minHeight: 52 },
+        select: { width: "100%", background: "#121C33", border: "1px solid #3A5073", borderRadius: 12, padding: "12px 44px 12px 16px", color: "#FFFFFF", fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: "pointer", WebkitAppearance: "none", appearance: "none", minHeight: 52, backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 16px center", textOverflow: "ellipsis" },
         btn: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "#F5A524", border: "none", borderRadius: 14, padding: "0 18px", color: "#1A1200", fontFamily: "inherit", fontSize: 16, fontWeight: 700, cursor: "pointer", marginTop: 10, WebkitAppearance: "none", minHeight: 56 },
-        btnGhost: { background: "transparent", border: "1px solid #3A5073", borderRadius: 14, padding: "0 18px", color: "#C5D0E2", fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer", minHeight: 52 },
+        btnGhost: { background: "transparent", border: "1px solid #3A5073", borderRadius: 14, padding: "0 18px", color: "#E8EEF7", fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer", minHeight: 52 },
         btnLink: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "#F5A524", borderRadius: 14, padding: "0 26px", color: "#1A1200", fontFamily: "inherit", fontSize: 16, fontWeight: 700, textDecoration: "none", marginTop: 18, minHeight: 56 },
-        hint: { fontSize: 13, color: "#8FA0BA", marginTop: 10, textAlign: "center", lineHeight: 1.5 },
+        hint: { fontSize: 14, color: "#B8C6DB", marginTop: 10, textAlign: "center", lineHeight: 1.5 },
         link: { color: "#F5A524", textDecoration: "none", fontWeight: 500 },
         error: { color: "#FCA5A5", fontSize: 13, lineHeight: 1.5, background: "#3A1414", border: "1px solid #7F1D1D", borderRadius: 12, padding: "12px 14px", marginTop: 12 },
         dropzone: { border: "2px dashed", borderRadius: 20, padding: "34px 16px", cursor: "pointer", transition: "border-color 0.3s", marginBottom: 14, textAlign: "center", background: "#121C33" },
@@ -1406,7 +1406,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <span style={{ fontSize: 21, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>bexio<span style={{ color: "#F5A524" }}>scan</span></span>
               </div>
               {step > 1 && (
-                <button onClick={() => setStep(1)} style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#1A2744", border: "1px solid #3A5073", borderRadius: 12, color: "#C5D0E2", cursor: "pointer", padding: 0 }} title="Modifier les clés" aria-label="Réglages"><IcoSliders s={20} /></button>
+                <button onClick={() => setStep(1)} style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#1A2744", border: "1px solid #3A5073", borderRadius: 12, color: "#E8EEF7", cursor: "pointer", padding: 0 }} title="Modifier les clés" aria-label="Réglages"><IcoSliders s={20} /></button>
               )}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
@@ -1415,7 +1415,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 return (
                   <div key={i} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ height: 4, borderRadius: 2, background: fait ? "#34D399" : actif ? "#F5A524" : "#22314D", transition: "all 0.3s" }} />
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: actif ? 700 : fait ? 600 : 500, color: actif ? "#fff" : fait ? "#6EE7B7" : "#6F819E" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: actif ? 700 : fait ? 600 : 500, color: actif ? "#fff" : fait ? "#6EE7B7" : "#9DAEC8" }}>
                       {fait ? <><IcoCheck s={12} sw={3} />{label}</> : <>{i + 1} · {label}</>}
                     </div>
                   </div>
@@ -1437,10 +1437,10 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             return (
               <div style={{ width: "100%", maxWidth: 520, marginBottom: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {Object.entries(parEnseigne).map(([enseigne, info]) => (
-                  <button key={enseigne} onClick={() => setStep(5)} style={{ background: "#1A2744", border: "1px solid #3A5073", borderRadius: 19, padding: "0 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 38, color: "#F2F5FA", fontSize: 13 }}>
+                  <button key={enseigne} onClick={() => setStep(5)} style={{ background: "#1A2744", border: "1px solid #3A5073", borderRadius: 19, padding: "0 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, minHeight: 38, color: "#FFFFFF", fontSize: 13 }}>
                     <span style={{ color: "#F5A524", display: "flex" }}><IcoReceipt s={14} /></span>
                     <span style={{ fontWeight: 700 }}>{enseigne}</span>
-                    <span style={{ color: "#A3B1C7" }}>{info.count}×</span>
+                    <span style={{ color: "#D3DDEC" }}>{info.count}×</span>
                     <span style={{ color: "#F5A524", fontWeight: 700 }}>{fCHF(info.total)}</span>
                   </button>
                 ))}
@@ -1463,7 +1463,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   onChange={e => setAnthropicKey(e.target.value)}
                   style={{ ...S.input, marginBottom: 14 }}
                 />
-                <p style={{ fontSize: 12, color: "#8FA0BA", marginTop: -6, marginBottom: 20 }}>
+                <p style={{ fontSize: 12, color: "#B8C6DB", marginTop: -6, marginBottom: 20 }}>
                   → <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={S.link}>console.anthropic.com</a> › API Keys
                 </p>
 
@@ -1476,7 +1476,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   onKeyDown={e => e.key === "Enter" && saveToken()}
                   style={S.input}
                 />
-                <p style={{ fontSize: 12, color: "#8FA0BA", marginTop: -6, marginBottom: 20 }}>
+                <p style={{ fontSize: 12, color: "#B8C6DB", marginTop: -6, marginBottom: 20 }}>
                   → <a href="https://developer.bexio.com/pat" target="_blank" rel="noreferrer" style={S.link}>developer.bexio.com/pat</a>
                 </p>
                 <button onClick={saveToken} disabled={!token.trim() || !anthropicKey.trim()} style={{ ...S.btn, opacity: token.trim() && anthropicKey.trim() ? 1 : 0.35 }}>
@@ -1551,7 +1551,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     <div>
                       <div style={{ marginBottom: 12, color: "#F5A524", display: "flex", justifyContent: "center" }}><IcoFile s={44} /></div>
                       <p style={{ color: "#ffffff", fontSize: 14, fontWeight: 600, margin: 0, overflowWrap: "anywhere" }}>{file.name}</p>
-                      <p style={{ color: "#A3B1C7", fontSize: 12, marginTop: 6, marginBottom: 0 }}>Touche pour changer</p>
+                      <p style={{ color: "#D3DDEC", fontSize: 12, marginTop: 6, marginBottom: 0 }}>Touche pour changer</p>
                     </div>
                   ) : pages.length > 0 ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }} onClick={e => e.stopPropagation()}>
@@ -1562,23 +1562,23 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           <button onClick={() => removePage(p.id)} aria-label="Retirer la page" style={{ position: "absolute", top: -18, right: -18, width: 44, height: 44, padding: 0, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><span style={{ width: 26, height: 26, borderRadius: 13, background: "#EF4444", border: "2px solid #121C33", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><IcoX s={12} sw={3} /></span></button>
                         </div>
                       ))}
-                      <div onClick={() => fileRef.current.click()} style={{ width: 92, height: 124, borderRadius: 8, border: "2px dashed #3A5073", display: "flex", alignItems: "center", justifyContent: "center", color: "#A3B1C7", fontSize: 28, cursor: "pointer" }}><IcoPlus s={28} /></div>
+                      <div onClick={() => fileRef.current.click()} style={{ width: 92, height: 124, borderRadius: 8, border: "2px dashed #3A5073", display: "flex", alignItems: "center", justifyContent: "center", color: "#D3DDEC", fontSize: 28, cursor: "pointer" }}><IcoPlus s={28} /></div>
                     </div>
                   ) : (
                     <div>
                       <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#F5A5241f", border: "1px solid #F5A52466", color: "#F5A524", fontSize: 28, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}><IcoUp s={28} /></div>
                       <p style={{ color: "#fff", fontSize: 16, fontWeight: 600, margin: "0 0 4px" }}>Choisir une facture</p>
-                      <p style={{ color: "#8FA0BA", fontSize: 13, lineHeight: 1.5, margin: 0 }}>Photo ou PDF · glisser-déposer possible</p>
+                      <p style={{ color: "#B8C6DB", fontSize: 13, lineHeight: 1.5, margin: 0 }}>Photo ou PDF · glisser-déposer possible</p>
                     </div>
                   )}
                 </div>
                 {pages.length > 0 && (
-                  <p style={{ color: "#8FA0BA", fontSize: 12, textAlign: "center", margin: "8px 0 0" }}>
+                  <p style={{ color: "#B8C6DB", fontSize: 12, textAlign: "center", margin: "8px 0 0" }}>
                     {pages.length > 1 ? `${pages.length} pages — ` : ""}touche "+" pour ajouter une page
                   </p>
                 )}
                 {scanInfo && (
-                  <p style={{ color: "#A3B1C7", fontSize: 13, textAlign: "center", margin: "10px 0 0" }}>
+                  <p style={{ color: "#D3DDEC", fontSize: 13, textAlign: "center", margin: "10px 0 0" }}>
                     {scanInfo}
                     {pages.length > 0 && pages[pages.length - 1].raw && (
                       <button onClick={useOriginalPhoto} style={{ background: "none", border: "none", color: "#F5A524", fontSize: 13, textDecoration: "underline", cursor: "pointer", marginLeft: 6, padding: 0 }}>
@@ -1678,7 +1678,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           <option value="">— compte global —</option>
                           {accounts.map(a => <option key={a.code} value={a.code}>{a.code} – {a.label}</option>)}
                         </select>
-                        {l.description && <div style={{ fontSize: 12, color: "#8FA0BA", marginTop: 6, lineHeight: 1.4 }}>{l.description}</div>}
+                        {l.description && <div style={{ fontSize: 12, color: "#B8C6DB", marginTop: 6, lineHeight: 1.4 }}>{l.description}</div>}
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={MINI_LABEL}>Montant HT</div>
@@ -1700,14 +1700,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       </div>
                     </div>
                   ))}
-                  <button onClick={addLigne} style={{ width: "100%", background: "none", border: "2px dashed #3A5073", color: "#C5D0E2", fontSize: 14, fontWeight: 500, borderRadius: 12, padding: "12px 10px", cursor: "pointer", minHeight: 46 }}>
+                  <button onClick={addLigne} style={{ width: "100%", background: "none", border: "2px dashed #3A5073", color: "#E8EEF7", fontSize: 14, fontWeight: 500, borderRadius: 12, padding: "12px 10px", cursor: "pointer", minHeight: 46 }}>
                     + Ajouter un taux de TVA
                   </button>
                 </div>
                 <div style={{ ...S.card2, padding: "6px 18px", marginBottom: 18 }}>
                   {[["Total HT", totals(data).ht, false], ["Total TVA", totals(data).tva, false], ["Total TTC", totals(data).ttc, true]].map(([lib, val, fort], i) => (
                     <div key={lib} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: fort ? "14px 0 12px" : "12px 0", borderTop: i ? "1px solid #2F4468" : "none" }}>
-                      <span style={{ fontSize: fort ? 14 : 13, fontWeight: fort ? 700 : 500, color: fort ? "#fff" : "#A3B1C7" }}>{lib}</span>
+                      <span style={{ fontSize: fort ? 14 : 13, fontWeight: fort ? 700 : 500, color: fort ? "#fff" : "#D3DDEC" }}>{lib}</span>
                       <span style={{ fontSize: fort ? 22 : 15, fontWeight: 700, color: fort ? "#F5A524" : "#fff", letterSpacing: "-0.01em" }}>{fCHF(val)}</span>
                     </div>
                   ))}
@@ -1718,7 +1718,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   </p>
                 )}
                 <div style={{ marginBottom: 18 }}>
-                  <label style={S.label}>Compte de charge par défaut <span style={{ color: "#8FA0BA", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— utilisé si une ligne n'a pas de compte propre</span></label>
+                  <label style={S.label}>Compte de charge par défaut <span style={{ color: "#B8C6DB", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— utilisé si une ligne n'a pas de compte propre</span></label>
                   <select value={selectedAccount?.code || ""} onChange={e => setSelectedAccount(accounts.find(a => a.code === e.target.value) || null)} style={S.select}>
                     <option value="">— Choisir un compte —</option>
                     {accounts.map(a => <option key={a.code} value={a.code}>{a.code} – {a.label}</option>)}
@@ -1754,21 +1754,21 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <p style={S.subtitle}>Facture fournisseur enregistrée dans bexio.</p>
                 <div style={{ ...S.card2, display: "flex", flexDirection: "column", gap: 12, padding: 18, margin: "20px 0 0", textAlign: "left" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "#A3B1C7", fontSize: 13 }}>N° interne</span>
+                    <span style={{ color: "#D3DDEC", fontSize: 13 }}>N° interne</span>
                     <span style={{ color: "#F5A524", fontFamily: MONO, fontSize: 17, fontWeight: 700 }}>{result.numeroInterne}</span>
                   </div>
                   <div style={{ borderTop: "1px solid #2F4468", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "#A3B1C7", fontSize: 13 }}>ID bexio</span>
+                    <span style={{ color: "#D3DDEC", fontSize: 13 }}>ID bexio</span>
                     <span style={{ color: "#F5A524", fontFamily: MONO, fontSize: 17, fontWeight: 700 }}>#{result.id}</span>
                   </div>
                   <div style={{ borderTop: "1px solid #2F4468", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "#A3B1C7", fontSize: 13 }}>Pièce jointe</span>
+                    <span style={{ color: "#D3DDEC", fontSize: 13 }}>Pièce jointe</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 15, fontSize: 13, fontWeight: 700, background: result.pjOk ? "#0F3B2E" : "#3A1414", color: result.pjOk ? "#6EE7B7" : "#FCA5A5" }}>
                       {result.pjOk ? <><IcoCheck s={14} sw={3} />Attachée</> : <><IcoAlert s={14} inline={false} />Non attachée</>}
                     </span>
                   </div>
                   {!result.pjOk && (
-                    <p style={{ color: "#8FA0BA", fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+                    <p style={{ color: "#B8C6DB", fontSize: 12, lineHeight: 1.5, margin: 0 }}>
                       L'écriture est créée. Attache manuellement la facture depuis bexio si nécessaire.
                     </p>
                   )}
@@ -1898,7 +1898,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     {Object.entries(parEnseigne).map(([enseigne, info]) => (
                       <div key={enseigne} style={{ padding: "12px 0", borderBottom: "1px solid #2F4468" }}>
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ color: "#ffffff", fontSize: 15, fontWeight: 600 }}>{enseigne} <span style={{ color: "#A3B1C7", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
+                          <span style={{ color: "#ffffff", fontSize: 15, fontWeight: 600 }}>{enseigne} <span style={{ color: "#D3DDEC", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
                           <span style={{ color: "#F5A524", fontWeight: 700, fontSize: 15 }}>{fCHF(info.total)}</span>
                         </div>
                         {info.possiblesDoublons > 0 && (
@@ -1920,7 +1920,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           return (
                             <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, background: "#121C33", border: "1px solid #2F4468", borderRadius: 14, padding: 14 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#A3B1C7", lineHeight: 1.4 }}>{l.description || "—"} · {l.taux_tva}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
+                                <div style={{ fontSize: 12, color: "#D3DDEC", lineHeight: 1.4 }}>{l.description || "—"} · {l.taux_tva}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
                               </div>
                               <select
                                 value={compteActuel}
