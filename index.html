@@ -125,6 +125,42 @@
       return imgs;
     }
 
+
+    // Extrait des pages (1-based) d'un PDF base64 et reconstruit un PDF contenant uniquement ces pages
+    async function pdfPagesVersFichier(base64Pdf, pagesNums, nom) {
+      if (!window.pdfjsLib) throw new Error("pdf.js indisponible");
+      const { jsPDF } = window.jspdf;
+      const bin = atob(base64Pdf);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      const valides = [...new Set(pagesNums.map(n => parseInt(n, 10)))].filter(n => n >= 1 && n <= pdf.numPages).sort((x, y) => x - y);
+      if (valides.length === 0) return null;
+      const A4_W = 210, A4_H = 297, MARGE = 8;
+      let doc = null;
+      for (let i = 0; i < valides.length; i++) {
+        const page = await pdf.getPage(valides[i]);
+        const vp = page.getViewport({ scale: 1.6 });
+        const canvas = document.createElement("canvas");
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        const orientation = canvas.width > canvas.height ? "l" : "p";
+        const pageW = orientation === "l" ? A4_H : A4_W;
+        const pageH = orientation === "l" ? A4_W : A4_H;
+        const echelle = Math.min((pageW - MARGE * 2) / canvas.width, (pageH - MARGE * 2) / canvas.height);
+        const fw = canvas.width * echelle, fh = canvas.height * echelle;
+        if (i === 0) doc = new jsPDF({ orientation, unit: "mm", format: [pageW, pageH] });
+        else doc.addPage([pageW, pageH], orientation);
+        doc.addImage(dataUrl, "JPEG", (pageW - fw) / 2, (pageH - fh) / 2, fw, fh);
+      }
+      const b64 = doc.output("datauristring").split(",")[1];
+      const out = atob(b64);
+      const bytes = new Uint8Array(out.length);
+      for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i);
+      return new File([bytes], nom, { type: "application/pdf" });
+    }
+
     // Appelle le LLM choisi et renvoie le texte brut de la réponse
     async function appelerLLM({ providerId, model, key, prompt, base64, mime }) {
       const P = LLM_PROVIDERS[providerId];
@@ -901,6 +937,8 @@
       const [moisActif, setMoisActifState] = useState(getMoisActif);
       const [file, setFile] = useState(null);
       const [originalFile, setOriginalFile] = useState(null);
+      const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
+      const [lotIdx, setLotIdx] = useState(0);
       const [pages, setPages] = useState([]);
       const [preview, setPreview] = useState(null);
       const [scanning, setScanning] = useState(false);
@@ -1078,6 +1116,8 @@ Il peut contenir UN SEUL document (facture ou ticket) OU PLUSIEURS tickets de ca
 Si tu détectes PLUSIEURS tickets sur l'image, retourne un objet JSON avec un tableau "tickets" contenant chaque ticket séparément.
 Si tu détectes UN SEUL document, retourne un objet JSON standard (sans tableau "tickets").
 
+FACTURES MULTIPLES (cas d'un lot de factures scannées dans un même PDF) : si le document contient PLUSIEURS FACTURES DISTINCTES (fournisseurs différents, OU même fournisseur mais numéros de facture différents), ne les fusionne JAMAIS. Retourne un objet { "factures": [ ... ] } où chaque entrée suit exactement le format UN SEUL document (avec sa propre ventilation lignes_tva par compte et par taux) et contient en plus "pages": [numéros de pages du PDF, à partir de 1, qui composent CETTE facture, ex: [1,2]]. Chaque page du PDF doit appartenir à une seule facture. Les tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) restent dans le tableau "tickets" ; si le PDF contient les deux, retourne { "factures": [...], "tickets": [...] }. Le même fournisseur peut apparaître plusieurs fois dans "factures" s'il y a plusieurs factures distinctes.
+
 Ta réponse doit commencer directement par { et finir par }, sans texte avant ou après, sans markdown, sans backticks.
 
 Format UN SEUL document :
@@ -1184,11 +1224,44 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             if (tronque) messages.push(`⚠ La réponse de Claude a été coupée (trop de tickets pour un seul scan) — seuls ${nouveaux.length} ticket(s) ont pu être récupérés. Il en manque probablement. Rescanne le reste en 2-3 photos séparées.`);
             if (possiblesDoublons > 0) messages.push(`${possiblesDoublons} ticket(s) ressemblent à un scan déjà fait (marqués "possible doublon" dans la liste) — vérifie avant de consolider, mais ils sont bien ajoutés.`);
             setError(messages.join(" "));
-            setStep(5);
-            setLoading(false);
-            setLoadingMsg("");
+            if (!(Array.isArray(parsed.factures) && parsed.factures.length > 0)) {
+              setStep(5);
+              setLoading(false);
+              setLoadingMsg("");
+              return;
+            }
+          }
+
+          // Lot de factures distinctes dans un même PDF : une entrée par facture, traitées l'une après l'autre
+          if (Array.isArray(parsed.factures) && parsed.factures.length > 0) {
+            const sigSetLot = chargerSignatures();
+            const elements = [];
+            for (let i = 0; i < parsed.factures.length; i++) {
+              const fa = parsed.factures[i];
+              if (!Array.isArray(fa.lignes_tva) || fa.lignes_tva.length === 0) {
+                const ttc = parseFloat(fa.montant_ttc) || 0;
+                fa.lignes_tva = [{ montant_ht: ttc / 1.081, taux_tva: 8.1, montant_tva: ttc - ttc / 1.081 }];
+              }
+              let fichierFa = f;
+              if (isPdf && Array.isArray(fa.pages) && fa.pages.length > 0) {
+                try {
+                  const nomFa = `facture-${String(i + 1).padStart(2, "0")}-${(fa.fournisseur || "fournisseur").replace(/[^a-z0-9]+/gi, "_")}.pdf`;
+                  fichierFa = (await pdfPagesVersFichier(base64, fa.pages, nomFa)) || f;
+                } catch (_) { fichierFa = f; }
+              }
+              const somme = fa.lignes_tva.reduce((t, l) => t + (parseFloat(l.montant_ht) || 0) + (parseFloat(l.montant_tva) || 0), 0);
+              const ecartFa = Math.round(((parseFloat(fa.montant_ttc) || 0) - somme) * 100) / 100;
+              const avert = [];
+              if (Math.abs(ecartFa) >= 0.05) avert.push(`⚠ INCOHÉRENCE : la somme des lignes (${somme.toFixed(2)} CHF) ne correspond pas au total extrait (${(parseFloat(fa.montant_ttc) || 0).toFixed(2)} CHF), écart de ${ecartFa.toFixed(2)} CHF — vérifie les lignes avant de valider.`);
+              if (sigSetLot.has(signatureFacture(fa.fournisseur, fa.date_facture, fa.montant_ttc))) avert.push("⚠ Cette facture ressemble à un scan déjà créé dans bexio (même fournisseur, date et montant) — vérifie avant de valider.");
+              elements.push({ data: fa, file: fichierFa, avert: avert.join(" ") });
+            }
+            setLot(elements);
+            setLotIdx(0);
+            chargerFactureLot(elements, 0);
             return;
           }
+
           if (!Array.isArray(parsed.lignes_tva) || parsed.lignes_tva.length === 0) {
             parsed.lignes_tva = [{ montant_ht: parsed.montant_ht || 0, taux_tva: parsed.taux_tva ?? 8.1, montant_tva: parsed.montant_tva || 0 }];
           }
@@ -1264,6 +1337,25 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           setLoading(false);
           setLoadingMsg("");
         }
+      }
+
+      // Charge la facture i du lot dans l'écran de revue ; le n° interne est attribué à ce moment-là
+      // (compteur mensuel actuel), donc pas de numéro "brûlé" si tu abandonnes le lot en cours de route.
+      function chargerFactureLot(arr, i) {
+        const el = arr[i];
+        if (!el) return;
+        const d = { ...el.data, numero_interne: genererNumeroFacture() };
+        setLotIdx(i);
+        setData(d);
+        setFile(el.file);
+        setResult(null);
+        setSelectedAccount(accounts.find(a => a.code === d.compte_suggere_code) || null);
+        setPaymentMode(d.reference_qr ? "QR" : d.iban ? "IBAN" : "MANUAL");
+        const prefixe = arr.length > 1 ? `Facture ${i + 1}/${arr.length} du lot. ` : "";
+        setError(el.avert ? prefixe + el.avert : "");
+        setStep(3);
+        setLoading(false);
+        setLoadingMsg("");
       }
 
       function totals(d) {
@@ -1498,7 +1590,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         }
       }
 
-      function reset() { setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
+      function reset() { setLot([]); setLotIdx(0); setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
 
       const S = {
         root: { minHeight: "100svh", display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top, 0px) + 20px) 20px 56px", fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", color: "#FFFFFF" },
@@ -1932,6 +2024,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </div>
                 <a href={result.url} target="_blank" rel="noreferrer" style={S.btnLink}>Voir dans bexio<IcoExt s={18} /></a>
                 <br />
+                {lot.length > 0 && lotIdx + 1 < lot.length && (
+                  <button onClick={() => chargerFactureLot(lot, lotIdx + 1)} style={{ ...S.btn, marginTop: 14 }}>
+                    Facture suivante ({lotIdx + 2}/{lot.length})<IcoArrow />
+                  </button>
+                )}
                 <button onClick={reset} style={{ ...S.btnGhost, marginTop: 14, width: "100%" }}>Scanner une autre facture</button>
               </div>
             )}
