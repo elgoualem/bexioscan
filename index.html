@@ -93,8 +93,13 @@
         keyHint: "sk-...", keyUrl: "https://platform.moonshot.ai/console/api-keys",
         models: [["moonshot-v1-32k-vision-preview", "Kimi Vision 32k"]],
       },
+      zai: {
+        label: "Z.ai (GLM) 🇨🇳", type: "openai", base: "https://api.z.ai/api/paas/v4", proxy: true, pdf: false, maxOut: 8000,
+        keyHint: "xxxxxxxx.xxxxxxxx", keyUrl: "https://z.ai/manage-apikey/apikey-list",
+        models: [["glm-4.6v", "GLM-4.6V"], ["glm-4.5v", "GLM-4.5V"]],
+      },
       glm: {
-        label: "Zhipu (GLM) 🇨🇳", type: "openai", base: "https://open.bigmodel.cn/api/paas/v4", proxy: true, pdf: false, maxOut: 8000,
+        label: "Zhipu bigmodel.cn (GLM) 🇨🇳", type: "openai", base: "https://open.bigmodel.cn/api/paas/v4", proxy: true, pdf: false, maxOut: 8000,
         keyHint: "xxxxxxxx.xxxxxxxx", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
         models: [["glm-4.5v", "GLM-4.5V"], ["glm-4v-plus", "GLM-4V Plus"]],
       },

@@ -15,7 +15,7 @@ export default {
 
     // Relais vers les API LLM (Qwen, Kimi, GLM…) pour contourner le CORS navigateur
     if (url.pathname.startsWith("/llm-proxy")) {
-      const HOTES_AUTORISES = ["dashscope-intl.aliyuncs.com", "dashscope.aliyuncs.com", "api.moonshot.ai", "api.moonshot.cn", "open.bigmodel.cn"];
+      const HOTES_AUTORISES = ["dashscope-intl.aliyuncs.com", "dashscope.aliyuncs.com", "api.moonshot.ai", "api.moonshot.cn", "open.bigmodel.cn", "api.z.ai"];
       let cible;
       try { cible = new URL(url.searchParams.get("url") || ""); } catch { cible = null; }
       if (!cible || cible.protocol !== "https:" || !HOTES_AUTORISES.includes(cible.hostname)) {
