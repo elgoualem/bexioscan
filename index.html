@@ -1412,7 +1412,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify([{ field: "name_1", value: d.fournisseur, criteria: "like" }]),
           });
+          let detailBexio = "";
           if (sr.ok) { const c = await sr.json(); if (c?.length > 0) contactId = c[0].id; }
+          else { detailBexio = `recherche contact : HTTP ${sr.status} ${(await sr.text()).slice(0, 200)}`; }
           if (!contactId) {
             setLoadingMsg("Création fournisseur…");
             const cc = await fetch(`${BEXIO_BASE}/contact`, {
@@ -1421,8 +1423,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               body: JSON.stringify({ contact_type_id: 2, name_1: d.fournisseur, owner_id: 1, user_id: 1 }),
             });
             if (cc.ok) { const c = await cc.json(); contactId = c.id; }
+            else { detailBexio += ` | création contact : HTTP ${cc.status} ${(await cc.text()).slice(0, 200)}`; }
           }
-          if (!contactId) throw new Error("Impossible de déterminer le fournisseur dans bexio");
+          if (!contactId) {
+            const tokenInvalide = /HTTP (401|403)/.test(detailBexio);
+            throw new Error("Impossible de déterminer le fournisseur dans bexio" + (tokenInvalide ? " — token bexio refusé (expiré, invalide ou d'un autre compte) : recrée-le sur developer.bexio.com/pat" : "") + (detailBexio ? ` [${detailBexio}]` : ""));
+          }
 
           setLoadingMsg("Paramètres bexio…");
           let taxRates = [];
