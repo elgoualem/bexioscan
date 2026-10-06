@@ -939,6 +939,7 @@
       const [originalFile, setOriginalFile] = useState(null);
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
+      const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
       const [pages, setPages] = useState([]);
       const [preview, setPreview] = useState(null);
       const [scanning, setScanning] = useState(false);
@@ -1111,10 +1112,11 @@ Ce document peut comporter PLUSIEURS PAGES. Deux cas bien distincts, à ne pas c
 
 ATTENTION AU DOUBLE COMPTAGE : certaines factures (ex : grossistes comme Prodega/Transgourmet) affichent des SOUS-TOTAUX par catégorie de produit (ex : "Alimentaire", "Vin", "Boissons", "Non alimentaire") intercalés entre les lignes d'articles, PUIS un tableau récapitulatif final "Regroupement par type de TVA" ou "Total facture" en fin de document. Ces sous-totaux de catégorie ne sont PAS des lignes d'achat supplémentaires — ce sont des totaux intermédiaires qui reprennent des articles déjà listés au-dessus. Ne les additionne JAMAIS en plus des articles ou du récapitulatif final : choisis UNE SEULE source pour le total (de préférence le tableau récapitulatif final par taux de TVA s'il existe), sinon tu vas gonfler le montant total par rapport à la vraie facture.
 
-Il peut contenir UN SEUL document (facture ou ticket) OU PLUSIEURS tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) photographiés ensemble ou sur des pages séparées d'un même envoi.
+Il peut contenir UN SEUL document (facture ou ticket), PLUSIEURS tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) photographiés ensemble ou sur des pages séparées, ET/OU PLUSIEURS FACTURES FOURNISSEUR DISTINCTES scannées d'un coup dans un même PDF (lot de factures : loyer, grossiste, énergie, télécom, assurances, etc.).
 
 Si tu détectes PLUSIEURS tickets sur l'image, retourne un objet JSON avec un tableau "tickets" contenant chaque ticket séparément.
-Si tu détectes UN SEUL document, retourne un objet JSON standard (sans tableau "tickets").
+Avant de répondre, PARCOURS LE DOCUMENT PAGE PAR PAGE et COMPTE les documents distincts : un changement de fournisseur, d'en-tête, de numéro de facture, de date ou un nouveau total final = une NOUVELLE facture. Si tu en comptes plusieurs (même si ce sont des factures de natures très différentes), tu DOIS utiliser le format "factures" ci-dessous, jamais l'objet standard.
+Si tu détectes UN SEUL document (une seule facture, éventuellement sur plusieurs pages), retourne un objet JSON standard (sans tableau "tickets" ni "factures").
 
 FACTURES MULTIPLES (cas d'un lot de factures scannées dans un même PDF) : si le document contient PLUSIEURS FACTURES DISTINCTES (fournisseurs différents, OU même fournisseur mais numéros de facture différents), ne les fusionne JAMAIS. Retourne un objet { "factures": [ ... ] } où chaque entrée suit exactement le format UN SEUL document (avec sa propre ventilation lignes_tva par compte et par taux) et contient en plus "pages": [numéros de pages du PDF, à partir de 1, qui composent CETTE facture, ex: [1,2]]. Chaque page du PDF doit appartenir à une seule facture. Les tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) restent dans le tableau "tickets" ; si le PDF contient les deux, retourne { "factures": [...], "tickets": [...] }. Le même fournisseur peut apparaître plusieurs fois dans "factures" s'il y a plusieurs factures distinctes.
 
@@ -1158,6 +1160,14 @@ EXEMPLE CONCRET (erreur fréquente à éviter) — une facture grossiste avec un
   { "compte_code": "4200", "taux_tva": 8.1, "montant_ht": 15.40, "description": "Vin Prosecco (boisson alcoolisée)" }
   { "compte_code": "4001", "taux_tva": 8.1, "montant_ht": 62.08, "description": "Articles non-alimentaires (sacs poubelle, gobelets...)" }
 Le montant_ht de chaque ligne doit correspondre au sous-total RÉEL de CETTE catégorie précise (visible sur la facture), jamais au total combiné de plusieurs catégories.
+
+Format PLUSIEURS FACTURES fournisseur distinctes (une entrée par facture, chacune avec sa propre ventilation et ses pages) :
+{
+  "factures": [
+    { "fournisseur": "Coop Genossenschaft", "date_facture": "JJ.MM.AAAA", "numero_facture": "1214/202", "description": "courte", "lignes_tva": [{ "montant_ht": nombre, "taux_tva": 0, "montant_tva": 0, "compte_code": "ex: 6000", "compte_libelle": "libellé", "description": "nature précise" }], "montant_ttc": nombre, "devise": "CHF", "date_echeance": "JJ.MM.AAAA ou null", "date_reglement": null, "reference_qr": null, "iban": null, "compte_suggere_code": "ex: 6000", "compte_suggere_libelle": "libellé", "confiance": "haute", "pages": [1] },
+    { "fournisseur": "Prodega", "date_facture": "JJ.MM.AAAA", "numero_facture": "numéro", "lignes_tva": [...], "montant_ttc": nombre, "devise": "CHF", "compte_suggere_code": "4200", "confiance": "haute", "pages": [2,3] }
+  ]
+}
 
 Format PLUSIEURS tickets :
 {
@@ -1258,6 +1268,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             }
             setLot(elements);
             setLotIdx(0);
+            setLotNums({});
             chargerFactureLot(elements, 0);
             return;
           }
@@ -1346,6 +1357,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         if (!el) return;
         const d = { ...el.data, numero_interne: genererNumeroFacture() };
         setLotIdx(i);
+        setLotNums(n => ({ ...n, [i]: d.numero_interne }));
         setData(d);
         setFile(el.file);
         setResult(null);
@@ -1590,7 +1602,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         }
       }
 
-      function reset() { setLot([]); setLotIdx(0); setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
+      function reset() { setLot([]); setLotIdx(0); setLotNums({}); setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
 
       const S = {
         root: { minHeight: "100svh", display: "flex", flexDirection: "column", alignItems: "center", padding: "calc(env(safe-area-inset-top, 0px) + 20px) 20px 56px", fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", color: "#FFFFFF" },
@@ -1849,6 +1861,22 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             {/* Étape 3 — Revue */}
             {step === 3 && data && (
               <div style={S.section}>
+                {lot.length > 1 && (
+                  <div style={{ ...S.card2, padding: 14, marginBottom: 16 }}>
+                    <div style={{ color: "#D3DDEC", fontSize: 12, fontWeight: 700, letterSpacing: 0.4, marginBottom: 10 }}>SUIVI DU LOT — {lot.length} FACTURES</div>
+                    {lot.map((el, i) => {
+                      const statut = i < lotIdx ? "Créée" : i === lotIdx ? "En cours" : "À faire";
+                      const couleur = i < lotIdx ? "#6EE7B7" : i === lotIdx ? "#F5A524" : "#B8C6DB";
+                      return (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 0", borderTop: i === 0 ? "none" : "1px solid #2F4468", fontSize: 13 }}>
+                          <span style={{ color: "#ffffff", overflowWrap: "anywhere", flex: 1 }}>{i + 1}. {el.data.fournisseur || "—"} <span style={{ color: "#B8C6DB" }}>· {el.data.numero_facture || "s/n"} · {(parseFloat(el.data.montant_ttc) || 0).toFixed(2)}</span></span>
+                          <span style={{ fontFamily: MONO, color: "#F5A524", whiteSpace: "nowrap" }}>{lotNums[i] || "—"}</span>
+                          <span style={{ color: couleur, fontWeight: 700, whiteSpace: "nowrap", minWidth: 62, textAlign: "right" }}>{statut}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <h2 style={S.title}>Vérification</h2>
                   <div style={{ ...S.badge, background: data.confiance === "haute" ? "#0F3B2E" : data.confiance === "moyenne" ? "#3D2E0B" : "#3A1414", color: data.confiance === "haute" ? "#6EE7B7" : data.confiance === "moyenne" ? "#FCD34D" : "#FCA5A5" }}>
