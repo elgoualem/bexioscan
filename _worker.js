@@ -13,6 +13,36 @@ export default {
 
     const url = new URL(request.url);
 
+    // Relais vers les API LLM (Qwen, Kimi, GLM…) pour contourner le CORS navigateur
+    if (url.pathname.startsWith("/llm-proxy")) {
+      const HOTES_AUTORISES = ["dashscope-intl.aliyuncs.com", "dashscope.aliyuncs.com", "api.moonshot.ai", "api.moonshot.cn", "open.bigmodel.cn"];
+      let cible;
+      try { cible = new URL(url.searchParams.get("url") || ""); } catch { cible = null; }
+      if (!cible || cible.protocol !== "https:" || !HOTES_AUTORISES.includes(cible.hostname)) {
+        return new Response(JSON.stringify({ error: "Hôte LLM non autorisé" }), {
+          status: 400, headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const resp = await fetch(cible.toString(), {
+          method: request.method,
+          headers: {
+            Authorization: request.headers.get("authorization") || "",
+            "Content-Type": request.headers.get("content-type") || "application/json",
+          },
+          body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer(),
+        });
+        return new Response(await resp.text(), {
+          status: resp.status,
+          headers: { ...cors, "Content-Type": resp.headers.get("content-type") || "application/json" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "Relais LLM indisponible : " + e.message }), {
+          status: 502, headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (!url.pathname.startsWith("/bexio-proxy")) {
       return env.ASSETS.fetch(request);
     }

@@ -63,6 +63,121 @@
 
     const BEXIO_BASE = "/bexio-proxy?path=/2.0";
 
+    // ── Choix du LLM ─────────────────────────────────────────────────────────
+    // type "anthropic" | "openai" (API compatible OpenAI) | "gemini"
+    // pdf: le fournisseur lit les PDF nativement ; sinon les pages sont converties en images
+    // proxy: appel via /llm-proxy (Worker) pour éviter les blocages CORS navigateur
+    const LLM_PROVIDERS = {
+      anthropic: {
+        label: "Anthropic (Claude)", type: "anthropic", pdf: true, maxOut: 32000,
+        keyHint: "sk-ant-api03-...", keyUrl: "https://console.anthropic.com/settings/keys",
+        models: [["claude-sonnet-4-6", "Claude Sonnet 4.6"], ["claude-sonnet-5-5", "Claude Sonnet 5.5"], ["claude-opus-5-5", "Claude Opus 5.5"], ["claude-haiku-4-5-20251001", "Claude Haiku 4.5"]],
+      },
+      openai: {
+        label: "OpenAI (GPT)", type: "openai", base: "https://api.openai.com/v1", pdf: true, maxOut: 16000,
+        keyHint: "sk-...", keyUrl: "https://platform.openai.com/api-keys",
+        models: [["gpt-4.1", "GPT-4.1"], ["gpt-4o", "GPT-4o"], ["gpt-4o-mini", "GPT-4o mini"]],
+      },
+      gemini: {
+        label: "Google (Gemini)", type: "gemini", pdf: true, maxOut: 32000,
+        keyHint: "AIza...", keyUrl: "https://aistudio.google.com/apikey",
+        models: [["gemini-2.5-pro", "Gemini 2.5 Pro"], ["gemini-2.5-flash", "Gemini 2.5 Flash"]],
+      },
+      qwen: {
+        label: "Alibaba (Qwen) 🇨🇳", type: "openai", base: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", proxy: true, pdf: false, maxOut: 8000,
+        keyHint: "sk-...", keyUrl: "https://modelstudio.console.alibabacloud.com/",
+        models: [["qwen-vl-max", "Qwen VL Max"], ["qwen-vl-plus", "Qwen VL Plus"]],
+      },
+      kimi: {
+        label: "Moonshot (Kimi) 🇨🇳", type: "openai", base: "https://api.moonshot.ai/v1", proxy: true, pdf: false, maxOut: 8000,
+        keyHint: "sk-...", keyUrl: "https://platform.moonshot.ai/console/api-keys",
+        models: [["moonshot-v1-32k-vision-preview", "Kimi Vision 32k"]],
+      },
+      glm: {
+        label: "Zhipu (GLM) 🇨🇳", type: "openai", base: "https://open.bigmodel.cn/api/paas/v4", proxy: true, pdf: false, maxOut: 8000,
+        keyHint: "xxxxxxxx.xxxxxxxx", keyUrl: "https://open.bigmodel.cn/usercenter/apikeys",
+        models: [["glm-4.5v", "GLM-4.5V"], ["glm-4v-plus", "GLM-4V Plus"]],
+      },
+    };
+    const MODELE_PERSO = "__perso__";
+
+    // Convertit un PDF (base64) en images JPEG (base64) pour les LLM qui ne lisent pas les PDF
+    async function pdfVersImages(base64Pdf, maxPages = 8) {
+      if (!window.pdfjsLib) throw new Error("pdf.js indisponible : ce modèle ne lit que des images");
+      const bin = atob(base64Pdf);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      const imgs = [];
+      for (let p = 1; p <= Math.min(pdf.numPages, maxPages); p++) {
+        const page = await pdf.getPage(p);
+        const vp = page.getViewport({ scale: 1.6 });
+        const canvas = document.createElement("canvas");
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+        imgs.push(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+      }
+      return imgs;
+    }
+
+    // Appelle le LLM choisi et renvoie le texte brut de la réponse
+    async function appelerLLM({ providerId, model, key, prompt, base64, mime }) {
+      const P = LLM_PROVIDERS[providerId];
+      const isPdf = mime === "application/pdf";
+      let res, json;
+
+      if (P.type === "anthropic") {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+          body: JSON.stringify({ model, max_tokens: P.maxOut, messages: [{ role: "user", content: [
+            { type: isPdf ? "document" : "image", source: { type: "base64", media_type: mime, data: base64 } },
+            { type: "text", text: prompt },
+          ] }] }),
+        });
+        json = await res.json();
+        if (!res.ok || json.type === "error") throw new Error(json.error?.message || `Erreur API (${res.status})`);
+        return json.content?.map(b => b.text || "").join("") || "";
+      }
+
+      if (P.type === "gemini") {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: prompt }] }],
+            generationConfig: { maxOutputTokens: P.maxOut },
+          }),
+        });
+        json = await res.json();
+        if (!res.ok) throw new Error(json.error?.message || `Erreur API (${res.status})`);
+        return json.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+      }
+
+      // API compatible OpenAI (OpenAI, Qwen, Kimi, GLM…)
+      let parts;
+      if (isPdf && P.pdf) {
+        parts = [{ type: "file", file: { filename: "document.pdf", file_data: `data:application/pdf;base64,${base64}` } }];
+      } else if (isPdf) {
+        parts = (await pdfVersImages(base64)).map(b => ({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${b}` } }));
+      } else {
+        parts = [{ type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } }];
+      }
+      parts.push({ type: "text", text: prompt });
+      const cible = `${P.base}/chat/completions`;
+      const url = P.proxy ? `/llm-proxy?url=${encodeURIComponent(cible)}` : cible;
+      const body = { model, messages: [{ role: "user", content: parts }] };
+      body[providerId === "openai" ? "max_completion_tokens" : "max_tokens"] = P.maxOut;
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify(body),
+      });
+      json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message || json.message || `Erreur API (${res.status})`);
+      return json.choices?.[0]?.message?.content || "";
+    }
+
     const COMPTES = [
       { id: null, code: "1100", label: "Créances résultant de la vente de biens et de prestations de services (débiteurs)" },
       { id: null, code: "2000", label: "Dettes résultant de l\'achat de biens et de prestations de services (créanciers)" },
@@ -762,10 +877,21 @@
       );
     }
 
+    // Clé API stockée par fournisseur (compat : ancienne clé Anthropic "bx_anthropic")
+    function lireCleLLM(p) {
+      return localStorage.getItem("bx_key_" + p) || (p === "anthropic" ? localStorage.getItem("bx_anthropic") : "") || "";
+    }
+    function lireFournisseurLLM() {
+      const p = localStorage.getItem("bx_llm_provider");
+      return LLM_PROVIDERS[p] ? p : "anthropic";
+    }
+
     function App() {
-      const [step, setStep] = useState(() => (localStorage.getItem("bx_token") && localStorage.getItem("bx_anthropic")) ? 2 : 1);
+      const [llmProvider, setLlmProvider] = useState(lireFournisseurLLM);
+      const [llmModel, setLlmModel] = useState(() => localStorage.getItem("bx_llm_model") || LLM_PROVIDERS[lireFournisseurLLM()].models[0][0]);
+      const [llmKey, setLlmKey] = useState(() => lireCleLLM(lireFournisseurLLM()));
+      const [step, setStep] = useState(() => (localStorage.getItem("bx_token") && lireCleLLM(lireFournisseurLLM())) ? 2 : 1);
       const [token, setToken] = useState(() => localStorage.getItem("bx_token") || "");
-      const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem("bx_anthropic") || "");
       const [numeroDepart, setNumeroDepart] = useState("");
       const [moisActif, setMoisActifState] = useState(getMoisActif);
       const [file, setFile] = useState(null);
@@ -792,10 +918,18 @@
       const [comptesTicketsOverrides, setComptesTicketsOverrides] = useState({}); // { "enseigne|compte|taux": nouveauCompteCode }
       const fileRef = useRef();
 
+      function changerFournisseur(id) {
+        setLlmProvider(id);
+        setLlmModel(LLM_PROVIDERS[id].models[0][0]);
+        setLlmKey(lireCleLLM(id));
+      }
+
       function saveToken() {
-        if (!token.trim() || !anthropicKey.trim()) return;
+        if (!token.trim() || !llmKey.trim() || !llmModel.trim()) return;
         localStorage.setItem("bx_token", token.trim());
-        localStorage.setItem("bx_anthropic", anthropicKey.trim());
+        localStorage.setItem("bx_llm_provider", llmProvider);
+        localStorage.setItem("bx_llm_model", llmModel.trim());
+        localStorage.setItem("bx_key_" + llmProvider, llmKey.trim());
         fetchAccounts(token.trim());
         setStep(2);
       }
@@ -990,25 +1124,14 @@ Format PLUSIEURS tickets :
 
 Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le bon compte de la liste ci-dessus en fonction de ce qui est réellement écrit sur le ticket ; si plusieurs taux de TVA ET/OU comptes différents sont présents, crée une entrée par combinaison compte+taux dans lignes_tva. Le champ "description" de chaque ligne doit être clair et précis (nature réelle des articles), pas un simple recopiage du libellé du compte — c'est ce qui permet à l'utilisateur de comprendre et vérifier pourquoi ce compte a été choisi.${reglesApprisesPourPrompt()}` }
           ];
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": anthropicKey,
-              "anthropic-version": "2023-06-01",
-              "anthropic-dangerous-direct-browser-access": "true",
-            },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 32000, messages: [{ role: "user", content }] }),
+          const text = await appelerLLM({
+            providerId: llmProvider, model: llmModel, key: llmKey,
+            prompt: content[1].text, base64, mime: f.type,
           });
-          const json = await res.json();
-          if (!res.ok || json.type === "error") {
-            throw new Error(json.error?.message || `Erreur API (${res.status})`);
-          }
-          const text = json.content?.map(b => b.text || "").join("") || "";
-          if (!text.trim()) throw new Error("Réponse vide de Claude — réessaie ou reprends la photo");
+          if (!text.trim()) throw new Error("Réponse vide de l'IA — réessaie ou reprends la photo");
           const jsonStart = text.indexOf("{");
           const jsonEnd = text.lastIndexOf("}");
-          if (jsonStart === -1) throw new Error("Claude n'a pas renvoyé de JSON exploitable");
+          if (jsonStart === -1) throw new Error("L'IA n'a pas renvoyé de JSON exploitable");
           let brut = text.slice(jsonStart, jsonEnd === -1 ? text.length : jsonEnd + 1);
           let parsed;
           let tronque = false;
@@ -1453,18 +1576,42 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             {step === 1 && (
               <div style={S.section}>
                 <h2 style={S.title}>Connexion</h2>
-                <p style={S.subtitle}>Renseigne tes deux clés API pour commencer</p>
+                <p style={S.subtitle}>Choisis ton IA, puis renseigne tes deux clés API</p>
 
-                <label style={S.label}>Clé API Anthropic (Claude)</label>
+                <label style={S.label}>Fournisseur IA</label>
+                <select value={llmProvider} onChange={e => changerFournisseur(e.target.value)} style={{ ...S.select, marginBottom: 14 }}>
+                  {Object.entries(LLM_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                </select>
+
+                <label style={S.label}>Modèle</label>
+                <select
+                  value={LLM_PROVIDERS[llmProvider].models.some(m => m[0] === llmModel) ? llmModel : MODELE_PERSO}
+                  onChange={e => setLlmModel(e.target.value === MODELE_PERSO ? "" : e.target.value)}
+                  style={{ ...S.select, marginBottom: 14 }}
+                >
+                  {LLM_PROVIDERS[llmProvider].models.map(([id, nom]) => <option key={id} value={id}>{nom}</option>)}
+                  <option value={MODELE_PERSO}>Autre (saisir l'identifiant)</option>
+                </select>
+                {!LLM_PROVIDERS[llmProvider].models.some(m => m[0] === llmModel) && (
+                  <input
+                    type="text"
+                    placeholder="identifiant du modèle"
+                    value={llmModel}
+                    onChange={e => setLlmModel(e.target.value)}
+                    style={{ ...S.input, marginBottom: 14 }}
+                  />
+                )}
+
+                <label style={S.label}>Clé API {LLM_PROVIDERS[llmProvider].label}</label>
                 <input
                   type="password"
-                  placeholder="sk-ant-api03-..."
-                  value={anthropicKey}
-                  onChange={e => setAnthropicKey(e.target.value)}
+                  placeholder={LLM_PROVIDERS[llmProvider].keyHint}
+                  value={llmKey}
+                  onChange={e => setLlmKey(e.target.value)}
                   style={{ ...S.input, marginBottom: 14 }}
                 />
                 <p style={{ fontSize: 12, color: "#B8C6DB", marginTop: -6, marginBottom: 20 }}>
-                  → <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={S.link}>console.anthropic.com</a> › API Keys
+                  → <a href={LLM_PROVIDERS[llmProvider].keyUrl} target="_blank" rel="noreferrer" style={S.link}>{LLM_PROVIDERS[llmProvider].keyUrl.replace(/^https?:\/\//, "").split("/")[0]}</a>
                 </p>
 
                 <label style={S.label}>Token bexio (Personal Access Token)</label>
@@ -1479,7 +1626,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <p style={{ fontSize: 12, color: "#B8C6DB", marginTop: -6, marginBottom: 20 }}>
                   → <a href="https://developer.bexio.com/pat" target="_blank" rel="noreferrer" style={S.link}>developer.bexio.com/pat</a>
                 </p>
-                <button onClick={saveToken} disabled={!token.trim() || !anthropicKey.trim()} style={{ ...S.btn, opacity: token.trim() && anthropicKey.trim() ? 1 : 0.35 }}>
+                <button onClick={saveToken} disabled={!token.trim() || !llmKey.trim() || !llmModel.trim()} style={{ ...S.btn, opacity: token.trim() && llmKey.trim() && llmModel.trim() ? 1 : 0.35 }}>
                   Continuer<IcoArrow />
                 </button>
                 <p style={S.hint}>Clés stockées uniquement dans le navigateur.</p>
