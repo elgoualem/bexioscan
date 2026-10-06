@@ -1605,7 +1605,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           const sigSet = chargerSignatures();
           sigSet.add(signatureFacture(d.fournisseur, d.date_facture, d.montant_ttc));
           sauverSignatures(sigSet);
-          setResult({ id: inv.id, url: `https://office.bexio.com/purchase/bills`, pjOk, numeroInterne: d.numero_interne, numeroBexio: inv.document_no || null, numeroBexioIdentique });
+          setResult({ id: inv.id, url: `https://office.bexio.com/`, pjOk, numeroInterne: d.numero_interne, numeroBexio: inv.document_no || null, numeroBexioIdentique });
           setStep(4);
         } catch (e) {
           setError("Erreur bexio : " + e.message);
