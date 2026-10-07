@@ -1408,20 +1408,35 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         try {
           let contactId = null;
           setLoadingMsg("Recherche fournisseur…");
-          const sr = await fetch(`${BEXIO_BASE}/contact/search`, {
-            method: "POST",
-            headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify([{ field: "name_1", value: d.fournisseur, criteria: "like" }]),
-          });
+          // Recherche du fournisseur : nom complet, puis versions raccourcies / sans accents (ex. « République et canton de Genève »
+          // doit retrouver le contact « Republique et Canton De Genève Département… » même si le nom de la facture est plus long).
+          const sansAccents = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const mots = sansAccents(d.fournisseur).replace(/[()]/g, " ").split(/\s+/).filter(Boolean);
+          const candidats = [...new Set([
+            d.fournisseur,
+            sansAccents(d.fournisseur),
+            ...(/canton de gen/i.test(sansAccents(d.fournisseur)) ? ["Republique et Canton De Gen"] : []),
+            mots.slice(0, 5).join(" "),
+            mots.slice(0, 3).join(" "),
+          ].filter(x => x && x.trim().length >= 4))];
           let detailBexio = "";
-          if (sr.ok) { const c = await sr.json(); if (c?.length > 0) contactId = c[0].id; }
-          else { detailBexio = `recherche contact : HTTP ${sr.status} ${(await sr.text()).slice(0, 200)}`; }
+          for (const cand of candidats) {
+            const sr = await fetch(`${BEXIO_BASE}/contact/search`, {
+              method: "POST",
+              headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify([{ field: "name_1", value: cand, criteria: "like" }]),
+            });
+            if (sr.ok) {
+              const c = await sr.json();
+              if (c?.length > 0) { contactId = c[0].id; break; }
+            } else { detailBexio = `recherche contact : HTTP ${sr.status} ${(await sr.text()).slice(0, 200)}`; break; }
+          }
           if (!contactId) {
             setLoadingMsg("Création fournisseur…");
             const cc = await fetch(`${BEXIO_BASE}/contact`, {
               method: "POST",
               headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
-              body: JSON.stringify({ contact_type_id: 2, name_1: d.fournisseur, owner_id: 1, user_id: 1 }),
+              body: JSON.stringify({ contact_type_id: 2, name_1: (d.fournisseur || "").slice(0, 80), owner_id: 1, user_id: 1 }),
             });
             if (cc.ok) { const c = await cc.json(); contactId = c.id; }
             else { detailBexio += ` | création contact : HTTP ${cc.status} ${(await cc.text()).slice(0, 200)}`; }
@@ -1566,7 +1581,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             item_net: true,
             attachment_ids: attachmentIds,
             address: {
-              lastname_company: d.fournisseur,
+              lastname_company: (d.fournisseur || "").slice(0, 80),
               type: "COMPANY",
             },
             line_items: lignes.map((l, i) => ({
