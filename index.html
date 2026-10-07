@@ -1602,11 +1602,26 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           if (!ir.ok) { const err = await ir.text(); throw new Error(`bexio ${ir.status}: ${err}`); }
           const inv = await ir.json();
 
+          // Vérifie que bexio a bien mis le numéro interne dans la case « N° » ; sinon tente de le corriger après coup.
+          let numeroFinal = inv.document_no || null;
+          try {
+            const hdr = { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" };
+            if (numeroFinal !== d.numero_interne) {
+              for (const m of ["PATCH", "PUT"]) {
+                const rr = await fetch(`/bexio-proxy?path=/4.0/purchase/bills/${inv.id}`, { method: m, headers: hdr, body: JSON.stringify({ document_no: d.numero_interne }) });
+                if (rr.ok) break;
+              }
+              const g = await fetch(`/bexio-proxy?path=/4.0/purchase/bills/${inv.id}`, { headers: hdr });
+              if (g.ok) { const b = await g.json(); numeroFinal = b.document_no || null; }
+            }
+          } catch (_) {}
+          numeroBexioIdentique = numeroFinal === d.numero_interne;
+
           syncCompteurDepuisNumero(d.numero_interne);
           const sigSet = chargerSignatures();
           sigSet.add(signatureFacture(d.fournisseur, d.date_facture, d.montant_ttc));
           sauverSignatures(sigSet);
-          setResult({ id: inv.id, url: `https://office.bexio.com/`, pjOk, numeroInterne: d.numero_interne, numeroBexio: inv.document_no || null, numeroBexioIdentique });
+          setResult({ id: inv.id, url: `https://office.bexio.com/`, pjOk, numeroInterne: d.numero_interne, numeroBexio: numeroFinal, numeroBexioIdentique });
           setStep(4);
         } catch (e) {
           setError("Erreur bexio : " + e.message);
@@ -2127,7 +2142,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </div>
                 {result.numeroBexioIdentique === false && (
                   <p style={{ color: "#FCD34D", fontSize: 12, lineHeight: 1.5, margin: "12px 0 0", textAlign: "left" }}>
-                    bexio n'a pas accepté le même numéro dans le champ « N° » : la facture a reçu son numéro automatique. Le numéro interne {result.numeroInterne} est bien dans « Référence ».
+                    bexio n'a pas accepté le même numéro dans le champ « N° » (valeur actuelle : {result.numeroBexio || "vide"}). Le numéro interne {result.numeroInterne} est bien dans « Référence ».
                   </p>
                 )}
                 <a href={result.url} target="_blank" rel="noreferrer" style={S.btnLink}>Voir dans bexio<IcoExt s={18} /></a>
