@@ -2083,6 +2083,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 )}
                 <div style={{ display: "flex", gap: 10, marginTop: 24, alignItems: "stretch" }}>
                   <button onClick={reset} style={S.btnGhost}>Recommencer</button>
+                  {lot.length > 1 && lotIdx + 1 < lot.length && (
+                    <button onClick={() => chargerFactureLot(lot, lotIdx + 1)} style={S.btnGhost}>Passer ({lotIdx + 2}/{lot.length})</button>
+                  )}
                   <button onClick={() => createInBexio()} disabled={!selectedAccount || loading} style={{ ...S.btn, flex: 1, marginTop: 0, opacity: selectedAccount && !loading ? 1 : 0.35 }}>
                     {loading ? loadingMsg : <>Créer l'écriture<IcoArrow /></>}
                   </button>
