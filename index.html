@@ -59,7 +59,7 @@
   <script src="https://unpkg.com/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" defer></script>
 
   <script type="text/babel">
-    const { useState, useRef, useCallback } = React;
+    const { useState, useRef, useCallback, useEffect } = React;
 
     const BEXIO_BASE = "/bexio-proxy?path=/2.0";
 
@@ -954,6 +954,7 @@
       const [paymentMode, setPaymentMode] = useState("virement");
       const [dateReglement, setDateReglement] = useState(() => new Date().toISOString().split("T")[0]);
       const [result, setResult] = useState(null);
+      const [doublons, setDoublons] = useState([]);
       const [dateConsolidation, setDateConsolidation] = useState(() => {
         const now2 = new Date();
         return `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}-${String(now2.getDate()).padStart(2,"0")}`;
@@ -1616,6 +1617,46 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         }
       }
 
+      // Recherche dans bexio d'une facture fournisseur déjà existante (même date + même montant, ou même référence)
+      async function chercherDoublons(d) {
+        setDoublons([]);
+        if (!token || !d || !d.date_facture) return;
+        try {
+          const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+          if (!r.ok) return;
+          const liste = await r.json();
+          const arr = Array.isArray(liste) ? liste : (liste.data || []);
+          const ttc = Math.round(totals(d).ttc * 100) / 100;
+          const trouves = arr.filter(b => {
+            const date = String(b.bill_date || "").slice(0, 10);
+            const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0);
+            const memeMontant = Math.abs(montant - ttc) < 0.011;
+            const p = String(d.date_facture).split(".");
+            const dateIso = p.length === 3 ? `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}` : String(d.date_facture).slice(0, 10);
+            const memeDate = date === dateIso;
+            const memeRef = d.numero_facture && [b.vendor_ref, b.document_no].some(v => v && String(v).trim().toLowerCase() === String(d.numero_facture).trim().toLowerCase());
+            return (memeDate && memeMontant) || memeRef;
+          });
+          setDoublons(trouves);
+        } catch (_) {}
+      }
+      // Suppression d'un doublon dans bexio — uniquement après confirmation explicite de l'utilisateur
+      async function supprimerDoublon(b) {
+        const lib = `${b.document_no || b.vendor_ref || b.id} — ${b.bill_date || ""} — ${parseFloat(b.gross ?? b.amount_man ?? 0).toFixed(2)} CHF`;
+        if (!window.confirm(`Supprimer définitivement cette facture dans bexio ?\n\n${lib}\n\nCette action est irréversible.`)) return;
+        try {
+          const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills/${b.id}`, { method: "DELETE", headers: { "x-bexio-token": token, Accept: "application/json" } });
+          if (!r.ok) { const t = await r.text(); throw new Error(`bexio ${r.status} ${t.slice(0, 200)}`); }
+          setDoublons(l => l.filter(x => x.id !== b.id));
+          setError("Facture supprimée dans bexio.");
+        } catch (e) {
+          setError("Suppression impossible : " + e.message + " — supprime-la directement dans bexio si besoin.");
+        }
+      }
+      useEffect(() => {
+        if (step === 3 && data && data.numero_interne) chercherDoublons(data); else setDoublons([]);
+      }, [step, data?.fournisseur, data?.date_facture, data?.montant_ttc, data?.numero_interne]);
+
       function reset() { setLot([]); setLotIdx(0); setLotNums({}); setStep(2); setData(null); setFile(null); setOriginalFile(null); setPages([]); setPreview(null); setScanInfo(""); setResult(null); setError(""); }
 
       const S = {
@@ -2023,6 +2064,23 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   </select>
                 </div>
                 {error && <p style={S.error}>{error}</p>}
+                {doublons.length > 0 && (
+                  <div style={{ ...S.error, color: "#FDE68A", background: "#3A2E0A", borderColor: "#92400E" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>⚠ Doublon possible dans bexio — vérifie :</div>
+                    {doublons.map(b => (
+                      <div key={b.id} style={{ borderTop: "1px solid #92400E", paddingTop: 8, marginTop: 8 }}>
+                        <div>N° {b.document_no || "—"} · réf. {b.vendor_ref || "—"}</div>
+                        <div>{String(b.bill_date || "").slice(0, 10)} · {parseFloat(b.gross ?? b.amount_man ?? 0).toFixed(2)} {b.currency_code || "CHF"} · statut {b.status || "—"}</div>
+                        <div style={{ marginTop: 4 }}>Scan actuel : {data.fournisseur} · {data.date_facture} · {totals(data).ttc.toFixed(2)} CHF</div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                          <a href="https://office.bexio.com/" target="_blank" rel="noreferrer" style={{ ...S.btnGhost, display: "flex", alignItems: "center", textDecoration: "none", minHeight: 40, fontSize: 14 }}>Ouvrir bexio</a>
+                          <button onClick={() => supprimerDoublon(b)} style={{ ...S.btnGhost, minHeight: 40, fontSize: 14, color: "#FCA5A5", borderColor: "#7F1D1D" }}>Supprimer l'existante dans bexio</button>
+                          <button onClick={() => setDoublons(l => l.filter(x => x.id !== b.id))} style={{ ...S.btnGhost, minHeight: 40, fontSize: 14 }}>Ce n'est pas un doublon</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 10, marginTop: 24, alignItems: "stretch" }}>
                   <button onClick={reset} style={S.btnGhost}>Recommencer</button>
                   <button onClick={() => createInBexio()} disabled={!selectedAccount || loading} style={{ ...S.btn, flex: 1, marginTop: 0, opacity: selectedAccount && !loading ? 1 : 0.35 }}>
