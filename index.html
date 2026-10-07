@@ -1978,7 +1978,15 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       style={{ ...S.input, marginBottom: 0, color: "#F5A524", fontWeight: 600, fontFamily: MONO, fontSize: 16 }}
                     />
                   </div>
-                  <Field label="Fournisseur" value={data.fournisseur} />
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={MINI_LABEL}>Fournisseur</div>
+                    <input
+                      type="text"
+                      value={data.fournisseur || ""}
+                      onChange={e => setData(d => ({ ...d, fournisseur: e.target.value }))}
+                      style={{ ...S.input, marginBottom: 0, fontSize: 15 }}
+                    />
+                  </div>
                   <div style={{ gridColumn: "auto" }}>
                     <div style={MINI_LABEL}>N° facture fournisseur</div>
                     <input
