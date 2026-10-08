@@ -622,16 +622,21 @@
       throw derniereErreur;
     }
 
+    // Évite qu'une étape (chargement d'image, envoi réseau) reste bloquée indéfiniment sans message
+    function avecTimeout(promesse, ms, libelle) {
+      return Promise.race([promesse, new Promise((_, rej) => setTimeout(() => rej(new Error(`${libelle} : délai dépassé (${Math.round(ms / 1000)} s)`)), ms))]);
+    }
+
     const LIMITE_BEXIO_OCTETS = 9 * 1024 * 1024; // ~9 Mo, marge sous le quota réel de bexio
 
     async function convertImageToPdf(file) {
       const dataUrl = await fileToDataURL(file);
-      const img = await new Promise((res, rej) => {
+      const img = await avecTimeout(new Promise((res, rej) => {
         const im = new Image();
         im.onload = () => res(im);
-        im.onerror = rej;
+        im.onerror = () => rej(new Error("image illisible (format non supporté ?)"));
         im.src = dataUrl;
-      });
+      }), 30000, "Chargement de l'image");
       const format = file.type.includes("png") ? "PNG" : "JPEG";
       const { jsPDF } = window.jspdf;
       // Page A4 fixe avec l'image centrée dedans (marge 8mm) — évite les pages à la taille brute en pixels
@@ -1505,9 +1510,17 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 pdfBlob = fi.blob;
                 attachName = fi.name;
               } else {
-                const pdfBase64 = await convertImageToPdf(fi.blob);
-                pdfBlob = new Blob([Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))], { type: "application/pdf" });
-                attachName = fi.name.replace(/\.[^.]+$/, "") + ".pdf";
+                try {
+                  const pdfBase64 = await convertImageToPdf(fi.blob);
+                  pdfBlob = new Blob([Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))], { type: "application/pdf" });
+                  attachName = fi.name.replace(/\.[^.]+$/, "") + ".pdf";
+                } catch (eConv) {
+                  dernierMessageErreur = `Pièce jointe ${numPj} (${fi.name}) : conversion impossible — ${eConv.message}`;
+                  setUploadError(dernierMessageErreur);
+                  echecsConsecutifs++;
+                  if (echecsConsecutifs >= 3) { setError(`Envoi des pièces jointes interrompu — ${dernierMessageErreur}`); break; }
+                  continue;
+                }
               }
               if (fi.blob.type === "application/pdf" && fi.blob.size > LIMITE_BEXIO_OCTETS) {
                 setLoadingMsg(`Le fichier "${attachName}" dépasse la limite bexio — recompression automatique…`);
@@ -1529,10 +1542,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               formData.append("file", pdfBlob, attachName);
               let fr;
               try {
+                setLoadingMsg(`Pièce jointe ${numPj}/${filesToAttach.length} : envoi à bexio…`);
                 fr = await fetchAvecRetry(`/bexio-proxy?path=/3.0/files`, {
                   method: "POST",
                   headers: { "x-bexio-token": token, Accept: "application/json" },
                   body: formData,
+                  signal: AbortSignal.timeout(60000),
                 });
               } catch (eReseau) {
                 dernierMessageErreur = `Coupure réseau pendant l'envoi de "${attachName}" : ${eReseau.message}`;
