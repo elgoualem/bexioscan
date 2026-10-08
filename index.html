@@ -1496,7 +1496,10 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
 
             let echecsConsecutifs = 0;
             let dernierMessageErreur = "";
+            let numPj = 0;
             for (const fi of filesToAttach) {
+              numPj++;
+              setLoadingMsg(`Pièce jointe ${numPj}/${filesToAttach.length} : conversion PDF et envoi…`);
               let pdfBlob, attachName;
               if (fi.blob.type === "application/pdf") {
                 pdfBlob = fi.blob;
