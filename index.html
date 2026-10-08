@@ -627,6 +627,9 @@
       return Promise.race([promesse, new Promise((_, rej) => setTimeout(() => rej(new Error(`${libelle} : délai dépassé (${Math.round(ms / 1000)} s)`)), ms))]);
     }
 
+    // bexio refuse certains caractères typographiques (tiret long « — ») dans les titres : « disallowedEmoji »
+    const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
+
     const LIMITE_BEXIO_OCTETS = 9 * 1024 * 1024; // ~9 Mo, marge sous le quota réel de bexio
 
     async function convertImageToPdf(file) {
@@ -1595,7 +1598,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             supplier_id: contactId,
             contact_partner_id: contactId,
             vendor_ref: d.numero_interne,
-            title: (d.mode_paiement ? `${d.fournisseur} — ${({ especes: "Espèces", carte: "Carte bancaire", twint: "TWINT" })[d.mode_paiement] || d.mode_paiement}` : d.fournisseur).slice(0, 80),
+            title: texteBexio(d.mode_paiement ? `${d.fournisseur} - ${({ especes: "Espèces", carte: "Carte bancaire", twint: "TWINT" })[d.mode_paiement] || d.mode_paiement}` : d.fournisseur).slice(0, 80),
             bill_date: dateFormatted,
             due_date: dueDateFormatted,
             manual_amount: true,
@@ -1609,7 +1612,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             },
             line_items: lignes.map((l, i) => ({
               position: i + 1,
-              title: (lignes.length > 1 ? `${l.compte_libelle || d.description || d.fournisseur} (TVA ${l.taux_tva}%)` : (d.description || d.fournisseur)).slice(0, 80) || d.fournisseur.slice(0, 80),
+              title: texteBexio((lignes.length > 1 ? `${l.compte_libelle || d.description || d.fournisseur} (TVA ${l.taux_tva}%)` : (d.description || d.fournisseur))).slice(0, 80) || texteBexio(d.fournisseur).slice(0, 80),
               tax_id: findTaxId(l.taux_tva),
               amount: r2(l.montant_ht),
               booking_account_id: resolveAccountId(l.compte_code),
