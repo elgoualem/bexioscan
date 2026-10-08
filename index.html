@@ -959,6 +959,7 @@
         const now2 = new Date();
         return `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}-${String(now2.getDate()).padStart(2,"0")}`;
       });
+      const [modesPaiementTickets, setModesPaiementTickets] = useState({}); // { enseigne: "carte" }
       const [numeroOverrides, setNumeroOverrides] = useState({}); // { enseigne: "gjuillet26/012" } saisie manuelle avant consolidation
       const [comptesTicketsOverrides, setComptesTicketsOverrides] = useState({}); // { "enseigne|compte|taux": nouveauCompteCode }
       const fileRef = useRef();
@@ -1170,6 +1171,8 @@ Format PLUSIEURS FACTURES fournisseur distinctes (une entrée par facture, chacu
   ]
 }
 
+Pour chaque ticket de caisse, ajoute aussi le champ "mode_paiement" lu sur le ticket : "especes" (Bar, Cash, Espèces, Rendu monnaie), "carte" (Maestro, Visa, Mastercard, Debit, V PAY, Karte, carte bancaire) ou "twint" (TWINT) ; null si rien n'est indiqué.
+
 Format PLUSIEURS tickets :
 {
   "tickets": [
@@ -1223,6 +1226,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 montant_ttc: t.montant_ttc,
                 lignes_tva: t.lignes_tva,
                 compte_suggere_code: t.compte_suggere_code || "4200",
+                mode_paiement: t.mode_paiement || null,
                 numero_interne: genererNumeroFacture(),
                 ts: Date.now(),
                 fichier: { base64, type: f.type, name: f.name },
@@ -1297,6 +1301,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               montant_ttc: parsed.montant_ttc,
               lignes_tva: parsed.lignes_tva,
               compte_suggere_code: parsed.compte_suggere_code,
+              mode_paiement: parsed.mode_paiement || null,
               numero_interne: parsed.numero_interne,
               ts: Date.now(),
               fichier: { base64, type: f.type, name: f.name },
@@ -1572,7 +1577,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             supplier_id: contactId,
             contact_partner_id: contactId,
             vendor_ref: d.numero_interne,
-            title: d.fournisseur.slice(0, 80),
+            title: (d.mode_paiement ? `${d.fournisseur} — ${({ especes: "Espèces", carte: "Carte bancaire", twint: "TWINT" })[d.mode_paiement] || d.mode_paiement}` : d.fournisseur).slice(0, 80),
             bill_date: dateFormatted,
             due_date: dueDateFormatted,
             manual_amount: true,
@@ -2197,6 +2202,17 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 });
               });
 
+              // Mode de paiement proposé par enseigne : celui lu le plus souvent sur les tickets, modifiable avant consolidation
+              const LIBELLES_PAIEMENT = { especes: "Espèces", carte: "Carte bancaire", twint: "TWINT" };
+              function modePaiementSuggere(enseigne) {
+                const cpt = {};
+                tickets.filter(t => t.fournisseur === enseigne && t.mode_paiement).forEach(t => { cpt[t.mode_paiement] = (cpt[t.mode_paiement] || 0) + 1; });
+                return Object.entries(cpt).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+              }
+              function modePaiementEnseigne(enseigne) {
+                return modesPaiementTickets[enseigne] ?? modePaiementSuggere(enseigne);
+              }
+
               async function viderFileAttente() {
                 if (!confirm(`Vider toute la file d'attente (${tickets.length} ticket(s)) ? Cette action est irréversible.`)) return;
                 await Promise.all(tickets.map(t => t.ficId ? idbDeleteFichier(t.ficId) : Promise.resolve()));
@@ -2254,7 +2270,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       fournisseur: enseigne,
                       date_facture: dateStr,
                       numero_facture: `tickets-${moisNom}${annee}`,
-                      description: `Achats ${enseigne} — ${moisNom} 20${annee} (${info.count} ticket${info.count > 1 ? "s" : ""})`,
+                      description: `Achats ${enseigne} — ${moisNom} 20${annee} (${info.count} ticket${info.count > 1 ? "s" : ""})${modePaiementEnseigne(enseigne) ? " — " + LIBELLES_PAIEMENT[modePaiementEnseigne(enseigne)] : ""}`,
                       lignes_tva: Object.values(lignesGroupees),
                       montant_ttc: info.total,
                       devise: "CHF",
@@ -2262,6 +2278,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       iban: null,
                       compte_suggere_code: ticketsEnseigne[0]?.compte_suggere_code || "4200",
                       numero_interne: (numeroOverrides[enseigne] || "").trim() || genererNumeroFacture(),
+                      mode_paiement: modePaiementEnseigne(enseigne),
                     };
                     const accForTicket = accounts.find(a => a.code === fakeData.compte_suggere_code) || null;
                     const filesForTicket = (await Promise.all(
@@ -2308,6 +2325,17 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           onChange={e => setNumeroOverrides(o => ({ ...o, [enseigne]: e.target.value }))}
                           style={{ ...S.input, marginBottom: 0, marginTop: 10, color: "#F5A524", fontWeight: 600, fontFamily: MONO, fontSize: 15 }}
                         />
+                        <div style={{ ...MINI_LABEL, marginTop: 10, textAlign: "left" }}>Mode de paiement</div>
+                        <select
+                          value={modePaiementEnseigne(enseigne)}
+                          onChange={e => setModesPaiementTickets(o => ({ ...o, [enseigne]: e.target.value }))}
+                          style={{ ...S.select, fontSize: 14, minHeight: 46 }}
+                        >
+                          <option value="">— À choisir —</option>
+                          <option value="especes">Espèces</option>
+                          <option value="carte">Carte bancaire</option>
+                          <option value="twint">TWINT</option>
+                        </select>
                         {Object.entries(info.lignes).map(([lk, l]) => {
                           const ovKey = `${enseigne}|${lk}`;
                           const compteActuel = comptesTicketsOverrides[ovKey] || l.compte_code;
