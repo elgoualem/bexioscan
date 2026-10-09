@@ -1464,6 +1464,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           const tr = await fetch(`/bexio-proxy?path=/3.0/taxes`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
           if (tr.ok) taxRates = await tr.json();
           const findTaxId = (rate) => {
+            // Ligne sans TVA (0 %) : bexio exige le code « IP00 - Sans TVA », sinon la facture ne s'enregistre pas
+            if (!(parseFloat(rate) > 0)) {
+              const noms = t => `${t.code || ""} ${t.name || ""} ${t.display_name || ""}`;
+              const ip00 = taxRates.find(t => t.is_active && /\bIP00\b/i.test(noms(t)))
+                || taxRates.find(t => t.is_active && /sans\s*tva/i.test(noms(t)))
+                || taxRates.find(t => t.is_active && Math.abs(parseFloat(t.value) || 0) < 0.01 && !/import|douan/i.test(noms(t) + (t.type || "")));
+              if (ip00) return ip00.id;
+            }
             const matches = taxRates.filter(t => t.is_active && Math.abs(parseFloat(t.value) - parseFloat(rate)) < 0.01);
             if (matches.length === 0) return null;
             const isImportCode = t => /import|douan/i.test(t.type || "") || /import|douan/i.test(t.name || t.display_name || "");
