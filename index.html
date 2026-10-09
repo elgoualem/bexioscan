@@ -1614,10 +1614,10 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               position: i + 1,
               // Description de ligne courte (limite de caractères bexio) : libellé tronqué, taux de TVA toujours conservé
               title: (() => {
-                const MAX = 40;
+                const MAX = 20;
                 if (lignes.length > 1) {
-                  const suffixe = ` (TVA ${l.taux_tva}%)`;
-                  return texteBexio(`${(l.compte_libelle || d.description || d.fournisseur).slice(0, Math.max(5, MAX - suffixe.length)).trim()}${suffixe}`);
+                  const suffixe = ` ${l.taux_tva}%`;
+                  return texteBexio(`${(l.compte_libelle || d.description || d.fournisseur).slice(0, Math.max(3, MAX - suffixe.length)).trim()}${suffixe}`);
                 }
                 return texteBexio(d.description || d.fournisseur).slice(0, MAX).trim() || texteBexio(d.fournisseur).slice(0, MAX);
               })(),
