@@ -1481,6 +1481,16 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             const investment = finalPool.find(t => t.type === "pre_tax_investment");
             return (material || investment || finalPool[0]).id;
           };
+          // Contact interne par défaut : Maboso (utilisateur bexio), tant que l'utilisateur ne demande pas de le changer
+          let contactInterneId = contactId;
+          try {
+            const ur = await fetch(`/bexio-proxy?path=/3.0/users`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+            if (ur.ok) {
+              const us = await ur.json();
+              const maboso = (Array.isArray(us) ? us : []).find(u => /maboso/i.test(`${u.firstname || ""} ${u.lastname || ""}`));
+              if (maboso) contactInterneId = maboso.id;
+            }
+          } catch (_) {}
           let accountId = acc?.id || null;
           if (!accountId && acc?.code) {
             const ar = await fetch(`${BEXIO_BASE}/accounts`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
@@ -1604,7 +1614,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           const r2 = n => Math.round((parseFloat(n) || 0) * 100) / 100;
           const payload = {
             supplier_id: contactId,
-            contact_partner_id: contactId,
+            contact_partner_id: contactInterneId,
             vendor_ref: d.numero_interne,
             title: texteBexio(d.mode_paiement ? `${d.fournisseur} - ${({ especes: "Espèces", carte: "Carte bancaire", twint: "TWINT" })[d.mode_paiement] || d.mode_paiement}` : d.fournisseur).slice(0, 80),
             bill_date: dateFormatted,
