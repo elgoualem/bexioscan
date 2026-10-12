@@ -630,6 +630,12 @@
     // bexio refuse certains caractères typographiques (tiret long « — ») dans les titres : « disallowedEmoji »
     const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
 
+    // "JJ.MM.AAAA" -> "AAAA-MM-JJ" (null si illisible)
+    const dateVersIso = (t) => {
+      const p = String(t || "").split(".");
+      return p.length === 3 && p[2].length === 4 ? `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}` : null;
+    };
+
     const LIMITE_BEXIO_OCTETS = 9 * 1024 * 1024; // ~9 Mo, marge sous le quota réel de bexio
 
     async function convertImageToPdf(file) {
@@ -1646,7 +1652,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             discounts: [],
             payment: {
               type: pm,
-              execution_date: dateReglement,
+              execution_date: dataOverride ? dateFormatted : dateReglement, // tickets consolidés : payés à la date de consolidation
               amount: r2(totals(d).ttc),
               salary_payment: false,
               ...(pm === "IBAN" && d.iban ? { iban: d.iban.replace(/\s/g, ""), name: d.fournisseur.slice(0, 70) } : {}),
@@ -1735,6 +1741,15 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           setError("Suppression impossible : " + e.message + " — supprime-la directement dans bexio si besoin.");
         }
       }
+      // Date de règlement alignée sur la facture : date lue sur le document, sinon date de la facture (paiement immédiat
+      // cash/carte/TWINT) ou échéance (virement) — plus la date du jour par défaut.
+      useEffect(() => {
+        if (step !== 3 || !data) return;
+        const iso = dateVersIso(data.date_reglement)
+          || (paymentMode === "MANUAL" ? dateVersIso(data.date_facture) : (dateVersIso(data.date_echeance) || dateVersIso(data.date_facture)));
+        if (iso) setDateReglement(iso);
+      }, [step, data?.numero_interne, data?.date_facture, data?.date_echeance, data?.date_reglement, paymentMode]);
+
       useEffect(() => {
         if (step === 3 && data && data.numero_interne) chercherDoublons(data); else setDoublons([]);
       }, [step, data?.fournisseur, data?.date_facture, data?.montant_ttc, data?.numero_interne]);
