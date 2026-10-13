@@ -1750,7 +1750,20 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         let annule = false;
         fetch(`/bexio-proxy?path=/3.0/taxes`, { headers: { "x-bexio-token": token, Accept: "application/json" } })
           .then(r => r.ok ? r.json() : [])
-          .then(t => { if (!annule && Array.isArray(t)) setTaxesBexio(t.filter(x => x.is_active !== false).sort((a, b) => (a.code || a.name || "").localeCompare(b.code || b.name || ""))); })
+          .then(t => {
+            if (annule || !Array.isArray(t)) return;
+            // Sans doublon : un seul exemplaire par code TVA + taux (bexio peut renvoyer plusieurs versions d'un même code,
+            // ex. périodes de validité différentes) — on garde la version active la plus récente.
+            const annee = new Date().getFullYear();
+            const valide = x => (x.is_active !== false ? 2 : 0) + (!x.end_year || x.end_year >= annee ? 1 : 0);
+            const uniques = new Map();
+            t.forEach(x => {
+              const cle = `${(x.code || x.name || x.display_name || "").trim().toLowerCase()}|${parseFloat(x.value) || 0}`;
+              const ex = uniques.get(cle);
+              if (!ex || valide(x) > valide(ex) || (valide(x) === valide(ex) && (x.start_year || 0) > (ex.start_year || 0))) uniques.set(cle, x);
+            });
+            setTaxesBexio([...uniques.values()].filter(x => x.is_active !== false).sort((a, b) => (a.code || a.name || "").localeCompare(b.code || b.name || "")));
+          })
           .catch(() => {});
         return () => { annule = true; };
       }, [token]);
