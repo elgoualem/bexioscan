@@ -1643,6 +1643,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             return found ? found.id : accountId;
           };
           const r2 = n => Math.round((parseFloat(n) || 0) * 100) / 100;
+          // Longueur max des descriptions de ligne : 20 par défaut, réduite automatiquement si bexio indique une limite plus basse
+          const limiteTitre = parseInt(localStorage.getItem("bx_limite_titre") || "", 10) || 20;
           const payload = {
             supplier_id: contactId,
             contact_partner_id: contactInterneId,
@@ -1662,7 +1664,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             line_items: lignes.map((l, i) => ({
               position: i + 1,
               // Description de ligne courte (limite de caractères bexio) : libellé tronqué, taux de TVA toujours conservé
-              title: texteBexio((lignes.length > 1 ? (l.compte_libelle || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, "").slice(0, 20).trim() || texteBexio(d.fournisseur).slice(0, 20),
+              title: texteBexio((lignes.length > 1 ? (l.compte_libelle || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, "").slice(0, limiteTitre).trim() || texteBexio(d.fournisseur).slice(0, limiteTitre),
               tax_id: l.tax_id || findTaxId(l.taux_tva),
               amount: r2(l.montant_ht),
               booking_account_id: resolveAccountId(l.compte_code),
@@ -1689,6 +1691,20 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
             ir = await postBill(payload);
             numeroBexioIdentique = false;
+          }
+          // Texte trop long : bexio indique sa limite (« max. N Zeichen ») -> on raccourcit titres et descriptions et on réessaie
+          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
+            const txtErr = await ir.clone().text();
+            const mLim = txtErr.match(/max\.?\s*(\d+)\s*(?:Zeichen|char|caract)/i);
+            if (mLim) {
+              const N = parseInt(mLim[1], 10);
+              try { localStorage.setItem("bx_limite_titre", String(Math.min(N, limiteTitre))); } catch (_) {}
+              ir = await postBill({
+                ...payload,
+                title: (payload.title || "").slice(0, N),
+                line_items: payload.line_items.map(li => ({ ...li, title: (li.title || "").slice(0, N) })),
+              });
+            }
           }
           if (!ir.ok) { const err = await ir.text(); throw new Error(`bexio ${ir.status}: ${err}`); }
           const inv = await ir.json();
