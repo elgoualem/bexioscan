@@ -2175,6 +2175,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       type="text"
                       value={data.numero_interne || ""}
                       onChange={e => setData(d => ({ ...d, numero_interne: e.target.value }))}
+                      onBlur={e => syncCompteurDepuisNumero(e.target.value)} /* le compteur repart du numéro saisi : prochain = +1 */
                       style={{ ...S.input, marginBottom: 0, color: "#F5A524", fontWeight: 600, fontFamily: MONO, fontSize: 16 }}
                     />
                   </div>
@@ -2542,6 +2543,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           type="text"
                           value={numeroOverrides[enseigne] ?? numerosTickets(Object.keys(parEnseigne), numeroOverrides)[enseigne]}
                           onChange={e => setNumeroOverrides(o => ({ ...o, [enseigne]: e.target.value }))}
+                          onBlur={e => syncCompteurDepuisNumero(e.target.value)}
                           style={{ ...S.input, marginBottom: 0, marginTop: 10, color: "#F5A524", fontWeight: 600, fontFamily: MONO, fontSize: 15 }}
                         />
                         <div style={{ ...MINI_LABEL, marginTop: 10, textAlign: "left" }}>Mode de paiement</div>
