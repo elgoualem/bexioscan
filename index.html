@@ -1669,10 +1669,19 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
 
           setLoadingMsg("Création de la facture…");
           const lignes = d.lignes_tva.filter(l => parseFloat(l.montant_ht) !== 0);
+          // Table code -> id bexio, chargée à neuf : la liste en mémoire peut contenir des comptes sans id (liste de secours),
+          // ce qui faisait retomber les lignes sur le compte par défaut du fournisseur (4200).
+          const idsComptes = {};
+          accounts.forEach(a => { if (a.id) idsComptes[String(a.code).trim()] = a.id; });
+          try {
+            const ar2 = await fetch(`${BEXIO_BASE}/accounts?limit=2000`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+            if (ar2.ok) { const aa2 = await ar2.json(); (Array.isArray(aa2) ? aa2 : []).forEach(a => { if (a.account_no != null) idsComptes[String(a.account_no).trim()] = a.id; }); }
+          } catch (_) {}
           const resolveAccountId = (code) => {
             if (!code) return accountId;
-            const found = accounts.find(a => a.code === code);
-            return found ? found.id : accountId;
+            const id = idsComptes[String(code).trim()];
+            if (!id) throw new Error(`Compte ${code} introuvable dans bexio : choisis un autre compte pour cette ligne.`);
+            return id;
           };
           const r2 = n => Math.round((parseFloat(n) || 0) * 100) / 100;
           // Longueur max des descriptions de ligne : 20 par défaut, réduite automatiquement si bexio indique une limite plus basse
