@@ -2526,11 +2526,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   <div style={{ ...S.card2, padding: 16, margin: "18px 0", textAlign: "left" }}>
                     <div style={{ ...MINI_LABEL, marginBottom: 12 }}>Tickets en attente</div>
                     {Object.entries(parEnseigne).map(([enseigne, info]) => (
-                      <div key={enseigne} style={{ padding: "12px 0", borderBottom: "1px solid #2F4468" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ color: "#ffffff", fontSize: 15, fontWeight: 600 }}>{enseigne} <span style={{ color: "#D3DDEC", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
-                          <span style={{ color: "#F5A524", fontWeight: 700, fontSize: 15 }}>{fCHF(info.total)}</span>
+                      <div key={enseigne} style={{ background: "#182645", border: "1px solid #3B5686", borderLeft: "5px solid #F5A524", borderRadius: 16, padding: 16, marginBottom: 22, boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, marginBottom: 4, borderBottom: "1px solid #3B5686" }}>
+                          <span style={{ color: "#ffffff", fontSize: 20, fontWeight: 700 }}>{enseigne} <span style={{ color: "#D3DDEC", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
+                          <span style={{ color: "#F5A524", fontWeight: 800, fontSize: 20 }}>{fCHF(info.total)}</span>
                         </div>
+                        <div style={{ ...MINI_LABEL, marginTop: 10, textAlign: "left" }}>N° de facture</div>
                         {info.possiblesDoublons > 0 && (
                           <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", background: "#3A1414", border: "1px solid #7F1D1D", borderRadius: 12, color: "#FCA5A5", fontSize: 13, lineHeight: 1.45, marginTop: 10 }}>
                             <IcoAlert s={18} inline={false} />
@@ -2554,15 +2555,21 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           <option value="carte">Carte bancaire</option>
                           <option value="twint">TWINT</option>
                         </select>
-                        {Object.entries(info.lignes).map(([lk, l]) => {
+                        {Object.entries(info.lignes).map(([lk, l], idxLigne) => {
+                          const accent = ["#38BDF8", "#34D399", "#C084FC", "#FB7185", "#FBBF24"][idxLigne % 5];
                           const ovKey = `${enseigne}|${lk}`;
                           const compteActuel = comptesTicketsOverrides[ovKey] || l.compte_code;
                           const compteInfo = accounts.find(a => a.code === compteActuel);
                           return (
-                            <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, background: "#121C33", border: "1px solid #2F4468", borderRadius: 14, padding: 14 }}>
+                            <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16, background: "#0F1930", border: "1px solid #2F4468", borderLeft: `5px solid ${accent}`, borderRadius: 14, padding: 14 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                                <span style={{ color: accent, fontWeight: 700, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" }}>Ligne {idxLigne + 1}</span>
+                                <span style={{ color: "#fff", fontWeight: 700, fontSize: 17 }}>{fCHF(l.montant_ht)} <span style={{ color: "#D3DDEC", fontSize: 11, fontWeight: 400 }}>HT</span></span>
+                              </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 12, color: "#D3DDEC", lineHeight: 1.4 }}>{l.description || "—"} · {(() => { const o = tauxTicketsOverrides[ovKey] ?? taxeSuggeree(enseigne, l.compte_code, l.taux_tva)?.id; if (o === undefined) return l.taux_tva; const tx = taxesBexio.find(x => String(x.id) === String(o)); return tx ? (parseFloat(tx.value) || 0) : o; })()}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
                               </div>
+                              <div style={{ ...MINI_LABEL, textAlign: "left" }}>Compte comptable</div>
                               <select
                                 value={compteActuel}
                                 onChange={e => {
