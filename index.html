@@ -441,6 +441,22 @@
       return `g${mois}${String(annee).slice(-2)}/${String(compteur).padStart(3, "0")}`;
     }
 
+    // Incrémente le dernier nombre d'un numéro en gardant le zéro-padding (gjuillet26/008 -> gjuillet26/009)
+    function incrementerNumero(n) {
+      return (n || "").replace(/(\d+)(\D*)$/, (_, d, suite) => String(parseInt(d, 10) + 1).padStart(d.length, "0") + suite);
+    }
+    // Numéros prévus pour chaque enseigne, dans l'ordre : saisie manuelle respectée, les suivantes s'incrémentent
+    function numerosTickets(enseignes, overrides) {
+      const res = {};
+      let suivant = peekNumeroFacture();
+      for (const e of enseignes) {
+        const saisi = ((overrides || {})[e] || "").trim();
+        res[e] = saisi || suivant;
+        suivant = incrementerNumero(res[e]);
+      }
+      return res;
+    }
+
     // File d'attente unique des tickets, indépendante du mois — tu consolides quand tu veux, pas seulement en fin de mois.
     const CLE_TICKETS_ATTENTE = "bx_tickets_attente";
 
@@ -2422,6 +2438,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 setLoading(true);
                 setLoadingMsg("Consolidation en cours…");
                 try {
+                  const numerosPrevus = numerosTickets(Object.keys(parEnseigne), numeroOverrides);
                   for (const [enseigne, info] of Object.entries(parEnseigne)) {
                     const ticketsEnseigne = tickets.filter(t => t.fournisseur === enseigne);
                     const lignesGroupees = {};
@@ -2469,7 +2486,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       reference_qr: null,
                       iban: null,
                       compte_suggere_code: ticketsEnseigne[0]?.compte_suggere_code || "4200",
-                      numero_interne: (numeroOverrides[enseigne] || "").trim() || genererNumeroFacture(),
+                      numero_interne: numerosPrevus[enseigne],
                       mode_paiement: modePaiementEnseigne(enseigne),
                     };
                     const accForTicket = accounts.find(a => a.code === fakeData.compte_suggere_code) || null;
@@ -2513,7 +2530,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                         )}
                         <input
                           type="text"
-                          value={numeroOverrides[enseigne] ?? peekNumeroFacture()}
+                          value={numeroOverrides[enseigne] ?? numerosTickets(Object.keys(parEnseigne), numeroOverrides)[enseigne]}
                           onChange={e => setNumeroOverrides(o => ({ ...o, [enseigne]: e.target.value }))}
                           style={{ ...S.input, marginBottom: 0, marginTop: 10, color: "#F5A524", fontWeight: 600, fontFamily: MONO, fontSize: 15 }}
                         />
