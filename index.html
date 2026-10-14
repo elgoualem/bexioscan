@@ -629,7 +629,21 @@
 
     // bexio refuse certains caractères typographiques (tiret long « — ») dans les titres : « disallowedEmoji »
     // Description de ligne propre pour bexio : espaces normalisés, coupe sans laisser de ponctuation/espace final, jamais vide
-const nettoyerTitre = (t, max) => (t || "").replace(/[\u0000-\u001f\u00a0]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max).replace(/[\s\-,;:.\/(&+]+$/, "").trim();
+const nettoyerTitre = (t, max) => {
+  const propre = (t || "").replace(/[\u0000-\u001f\u00a0]+/g, " ").replace(/\s+/g, " ").trim();
+  if (propre.length <= max) return propre.replace(/[\s\-,;:.\/(&+]+$/, "").trim();
+  // Coupe uniquement entre deux mots : jamais de mot tronqué (bexio refuse les mots coupés)
+  const mots = propre.split(" ");
+  let res = "";
+  for (const m of mots) {
+    const essai = res ? res + " " + m : m;
+    if (essai.length > max) break;
+    res = essai;
+  }
+  // Premier mot déjà trop long : on le garde entier plutôt que de le couper
+  if (!res) res = mots[0];
+  return res.replace(/[\s\-,;:.\/(&+]+$/, "").trim();
+};
 const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
 
     // "JJ.MM.AAAA" -> "AAAA-MM-JJ" (null si illisible)
@@ -1704,7 +1718,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               ir = await postBill({
                 ...payload,
                 title: (payload.title || "").slice(0, N),
-                line_items: payload.line_items.map(li => ({ ...li, title: (li.title || "").slice(0, N) })),
+                line_items: payload.line_items.map(li => ({ ...li, title: nettoyerTitre(li.title, N) })),
               });
             }
           }
