@@ -628,7 +628,9 @@
     }
 
     // bexio refuse certains caractères typographiques (tiret long « — ») dans les titres : « disallowedEmoji »
-    const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
+    // Description de ligne propre pour bexio : espaces normalisés, coupe sans laisser de ponctuation/espace final, jamais vide
+const nettoyerTitre = (t, max) => (t || "").replace(/[\u0000-\u001f\u00a0]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max).replace(/[\s\-,;:.\/(&+]+$/, "").trim();
+const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
 
     // "JJ.MM.AAAA" -> "AAAA-MM-JJ" (null si illisible)
     const dateVersIso = (t) => {
@@ -1664,7 +1666,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             line_items: lignes.map((l, i) => ({
               position: i + 1,
               // Description de ligne courte (limite de caractères bexio) : libellé tronqué, taux de TVA toujours conservé
-              title: texteBexio((lignes.length > 1 ? (l.compte_libelle || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, "").slice(0, limiteTitre).trim() || texteBexio(d.fournisseur).slice(0, limiteTitre),
+              title: nettoyerTitre(texteBexio((lignes.length > 1 ? (l.compte_libelle || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, ""), limiteTitre) || nettoyerTitre(texteBexio(d.fournisseur), limiteTitre) || "Facture",
               tax_id: l.tax_id || findTaxId(l.taux_tva),
               amount: r2(l.montant_ht),
               booking_account_id: resolveAccountId(l.compte_code),
