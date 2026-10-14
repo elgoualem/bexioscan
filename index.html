@@ -636,6 +636,18 @@
       return p.length === 3 && p[2].length === 4 ? `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}` : null;
     };
 
+    // Apprentissage des codes TVA : « fournisseur + compte + taux lu » -> code TVA bexio choisi par l'utilisateur
+    function chargerReglesTaxes() { try { return JSON.parse(localStorage.getItem("bx_regles_taxes") || "{}"); } catch (_) { return {}; } }
+    const cleRegleTaxe = (f, compte, taux) => `${(f || "").trim().toLowerCase()}|${compte || ""}|${parseFloat(taux) || 0}`;
+    function apprendreTaxe(f, compte, tauxLu, taxe) {
+      if (!f || !taxe) return;
+      try {
+        const r = chargerReglesTaxes();
+        r[cleRegleTaxe(f, compte, tauxLu)] = { id: taxe.id, code: taxe.code || taxe.name || "", value: parseFloat(taxe.value) || 0 };
+        localStorage.setItem("bx_regles_taxes", JSON.stringify(r));
+      } catch (_) {}
+    }
+
     const LIMITE_BEXIO_OCTETS = 9 * 1024 * 1024; // ~9 Mo, marge sous le quota réel de bexio
 
     async function convertImageToPdf(file) {
@@ -1412,7 +1424,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         const t = taxesBexio.find(x => String(x.id) === String(taxId));
         if (!t) { updateLigne(i, { tax_id: null }); return; }
         const taux = parseFloat(t.value) || 0;
-        updateLigne(i, { tax_id: t.id, taux_tva: taux, montant_tva: Math.round(((data.lignes_tva[i].montant_ht || 0) * taux) / 100 * 100) / 100 });
+        const ligne = data.lignes_tva[i];
+        apprendreTaxe(data.fournisseur, ligne.compte_code || data.compte_suggere_code, ligne.taux_ia ?? ligne.taux_tva, t);
+        updateLigne(i, { tax_id: t.id, taux_ia: ligne.taux_ia ?? ligne.taux_tva, taux_tva: taux, montant_tva: Math.round(((data.lignes_tva[i].montant_ht || 0) * taux) / 100 * 100) / 100 });
       }
 
       function ligneTauxChange(i, taux) {
@@ -1767,7 +1781,41 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           .catch(() => {});
         return () => { annule = true; };
       }, [token]);
+      // Codes TVA d'ACHAT uniquement (IPM…, IPCE…, IAM…, IP00…) : on écarte les codes de chiffre d'affaires (CR26, NO81…)
+      const taxesAchat = (() => {
+        const achats = taxesBexio.filter(t => /^I/i.test(t.code || t.name || "") || /pre_tax/i.test(t.type || ""));
+        return achats.length > 0 ? achats : taxesBexio;
+      })();
+      // Code TVA proposé : celui appris pour ce fournisseur/compte/taux, sinon le code d'achat standard du taux (IPM de préférence)
+      const taxeSuggeree = (fournisseur, compte, taux) => {
+        const r = chargerReglesTaxes()[cleRegleTaxe(fournisseur, compte, taux)];
+        if (r) {
+          const t = taxesAchat.find(x => String(x.id) === String(r.id)) || taxesAchat.find(x => (x.code || x.name) === r.code);
+          if (t) return t;
+        }
+        const cands = taxesAchat.filter(t => Math.abs((parseFloat(t.value) || 0) - (parseFloat(taux) || 0)) < 0.01);
+        return cands.find(t => /^IPM/i.test(t.code || t.name || "")) || cands.find(t => /^IP/i.test(t.code || t.name || "")) || cands[0] || null;
+      };
       const libelleTaxe = (t) => t.display_name || [t.code, t.name].filter(Boolean).join(" - ") + ` ${parseFloat(t.value) || 0}%`;
+
+      // À l'arrivée d'une facture : applique le code TVA appris (ou le code d'achat standard du taux) à chaque ligne
+      useEffect(() => {
+        if (step !== 3 || !data || data._taxes || taxesAchat.length === 0) return;
+        setData(d => ({
+          ...d,
+          _taxes: true,
+          lignes_tva: d.lignes_tva.map(l => {
+            if (l.tax_id) return l;
+            const t = taxeSuggeree(d.fournisseur, l.compte_code || d.compte_suggere_code, l.taux_tva);
+            if (!t) return l;
+            const taux = parseFloat(t.value) || 0;
+            if (Math.abs(taux - parseFloat(l.taux_tva)) < 0.001) return { ...l, tax_id: t.id, taux_ia: l.taux_tva };
+            const ttc = (parseFloat(l.montant_ht) || 0) + (parseFloat(l.montant_tva) || 0);
+            const ht = Math.round((ttc / (1 + taux / 100)) * 100) / 100;
+            return { ...l, tax_id: t.id, taux_ia: l.taux_tva, taux_tva: taux, montant_ht: ht, montant_tva: Math.round((ttc - ht) * 100) / 100 };
+          }),
+        }));
+      }, [step, data?.numero_interne, data?._taxes, taxesAchat.length]);
 
       // Date de règlement alignée sur la facture : date lue sur le document, sinon date de la facture (paiement immédiat
       // cash/carte/TWINT) ou échéance (virement) — plus la date du jour par défaut.
@@ -2150,13 +2198,13 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={MINI_LABEL}>Taux TVA</div>
-                        {taxesBexio.length > 0 ? (
+                        {taxesAchat.length > 0 ? (
                           <select
-                            value={l.tax_id || (taxesBexio.find(t => Math.abs(parseFloat(t.value) - l.taux_tva) < 0.01 && !/import|douan|IA|IPCE/i.test(`${t.code || ""}${t.type || ""}`))?.id ?? "")}
+                            value={l.tax_id ?? (taxeSuggeree(data.fournisseur, l.compte_code || data.compte_suggere_code, l.taux_tva)?.id ?? "")}
                             onChange={e => ligneTaxeChange(i, e.target.value)}
                             style={S.select}
                           >
-                            {taxesBexio.map(t => <option key={t.id} value={t.id}>{libelleTaxe(t)}</option>)}
+                            {taxesAchat.map(t => <option key={t.id} value={t.id}>{libelleTaxe(t)}</option>)}
                           </select>
                         ) : (
                           <select value={l.taux_tva} onChange={e => ligneTauxChange(i, parseFloat(e.target.value))} style={S.select}>
@@ -2352,15 +2400,16 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       const tauxChoisi = tauxTicketsOverrides[`${enseigne}|${compteBase}|${l.taux_tva}`];
                       // La valeur choisie est l'id d'un code TVA bexio (ou un taux simple si la liste n'a pas pu être chargée)
                       const taxeChoisie = tauxChoisi !== undefined ? taxesBexio.find(x => String(x.id) === String(tauxChoisi)) : null;
-                      const tauxFinal = taxeChoisie ? (parseFloat(taxeChoisie.value) || 0) : (tauxChoisi !== undefined ? parseFloat(tauxChoisi) : l.taux_tva);
+                      const taxeEff = taxeChoisie || (tauxChoisi === undefined ? taxeSuggeree(enseigne, compteBase, l.taux_tva) : null);
+                      const tauxFinal = taxeEff ? (parseFloat(taxeEff.value) || 0) : (tauxChoisi !== undefined ? parseFloat(tauxChoisi) : l.taux_tva);
                       let ligneHt = parseFloat(l.montant_ht) || 0, ligneTva = parseFloat(l.montant_tva) || 0;
-                      if (tauxChoisi !== undefined) {
+                      if (tauxChoisi !== undefined || (taxeEff && Math.abs(tauxFinal - parseFloat(l.taux_tva)) > 0.001)) {
                         const ttcLigne = ligneHt + ligneTva;
                         ligneHt = ttcLigne / (1 + tauxFinal / 100);
                         ligneTva = ttcLigne - ligneHt;
                       }
-                      const k = `${compte}|${taxeChoisie ? taxeChoisie.id : tauxFinal}`;
-                      if (!lignesGroupees[k]) lignesGroupees[k] = { taux_tva: tauxFinal, tax_id: taxeChoisie ? taxeChoisie.id : null, compte_code: compte, compte_libelle: l.compte_libelle, montant_ht: 0, montant_tva: 0 };
+                      const k = `${compte}|${taxeEff ? taxeEff.id : tauxFinal}`;
+                      if (!lignesGroupees[k]) lignesGroupees[k] = { taux_tva: tauxFinal, tax_id: taxeEff ? taxeEff.id : null, compte_code: compte, compte_libelle: l.compte_libelle, montant_ht: 0, montant_tva: 0 };
                       lignesGroupees[k].montant_ht += ligneHt;
                       lignesGroupees[k].montant_tva += ligneTva;
                     }));
@@ -2454,7 +2503,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           return (
                             <div key={lk} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, background: "#121C33", border: "1px solid #2F4468", borderRadius: 14, padding: 14 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#D3DDEC", lineHeight: 1.4 }}>{l.description || "—"} · {(() => { const o = tauxTicketsOverrides[ovKey]; if (o === undefined) return l.taux_tva; const tx = taxesBexio.find(x => String(x.id) === String(o)); return tx ? (parseFloat(tx.value) || 0) : o; })()}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
+                                <div style={{ fontSize: 12, color: "#D3DDEC", lineHeight: 1.4 }}>{l.description || "—"} · {(() => { const o = tauxTicketsOverrides[ovKey] ?? taxeSuggeree(enseigne, l.compte_code, l.taux_tva)?.id; if (o === undefined) return l.taux_tva; const tx = taxesBexio.find(x => String(x.id) === String(o)); return tx ? (parseFloat(tx.value) || 0) : o; })()}% · <b style={{ color: "#fff", fontWeight: 600 }}>{fCHF(l.montant_ht)}</b></div>
                               </div>
                               <select
                                 value={compteActuel}
@@ -2470,12 +2519,16 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                               </select>
                               <div style={{ ...MINI_LABEL, textAlign: "left" }}>Taux de TVA</div>
                               <select
-                                value={String(tauxTicketsOverrides[ovKey] ?? (taxesBexio.length > 0 ? (taxesBexio.find(t => Math.abs(parseFloat(t.value) - parseFloat(l.taux_tva)) < 0.01 && !/import|douan|IA|IPCE/i.test(`${t.code || ""}${t.type || ""}`))?.id ?? "") : l.taux_tva))}
-                                onChange={e => setTauxTicketsOverrides(o => ({ ...o, [ovKey]: e.target.value }))}
+                                value={String(tauxTicketsOverrides[ovKey] ?? (taxesAchat.length > 0 ? (taxeSuggeree(enseigne, l.compte_code, l.taux_tva)?.id ?? "") : l.taux_tva))}
+                                onChange={e => {
+                                  const tx = taxesAchat.find(x => String(x.id) === String(e.target.value));
+                                  if (tx) apprendreTaxe(enseigne, l.compte_code, l.taux_tva, tx);
+                                  setTauxTicketsOverrides(o => ({ ...o, [ovKey]: e.target.value }));
+                                }}
                                 style={{ ...S.select, background: "#1A2744", backgroundImage: CHEVRON, backgroundRepeat: "no-repeat", backgroundPosition: "right 14px center", fontSize: 14, minHeight: 46, padding: "0 40px 0 14px", borderRadius: 10 }}
                               >
-                                {taxesBexio.length > 0
-                                  ? taxesBexio.map(t => <option key={t.id} value={String(t.id)}>{libelleTaxe(t)}</option>)
+                                {taxesAchat.length > 0
+                                  ? taxesAchat.map(t => <option key={t.id} value={String(t.id)}>{libelleTaxe(t)}</option>)
                                   : [...new Set([0, 2.6, 3.8, 8.1, parseFloat(l.taux_tva)])].sort((a, b) => a - b).map(t => <option key={t} value={String(t)}>{t === 0 ? "0 % (sans TVA)" : `${t} %`}</option>)}
                               </select>
                             </div>
