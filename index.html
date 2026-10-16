@@ -1767,6 +1767,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           };
           // Total laissé calculé par bexio (comme une écriture saisie à la main) : le total « manuel » forcé obligeait à retoucher une ligne
           // pour que l'interface recalcule et valide. Si l'API refuse, on retombe sur la version avec total manuel (voir plus bas).
+          // Avoir (total négatif) : bexio refuse un paiement négatif ou à 0 → la facture est créée sans paiement
+          if (r2(totals(d).ttc) <= 0) delete payload.payment;
           const payloadManuel = JSON.parse(JSON.stringify(payload));
           payload.manual_amount = false;
           delete payload.amount_man;
@@ -1778,7 +1780,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             body: JSON.stringify(body),
           });
           const sansTaxCalc = (p) => ({ ...p, line_items: p.line_items.map(({ tax_calculated, ...li }) => li) });
-          const sansFee = (p) => { const { fee, ...pay } = p.payment; return { ...p, payment: pay }; };
+          const sansFee = (p) => { if (!p.payment) return p; const { fee, ...pay } = p.payment; return { ...p, payment: pay }; };
           const peutRetenter = (r) => !r.ok && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403;
           // Variantes de la plus complète à la plus sûre (la dernière = ce qui fonctionnait avant : total manuel, sans fee ni tax_calculated)
           const variantes = [
