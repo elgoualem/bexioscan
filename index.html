@@ -1763,6 +1763,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               ...(pm === "QR" && d.reference_no ? { reference_no: d.reference_qr } : {}),
             },
           };
+          // Total laissé calculé par bexio (comme une écriture saisie à la main) : le total « manuel » forcé obligeait à retoucher une ligne
+          // pour que l'interface recalcule et valide. Si l'API refuse, on retombe sur la version avec total manuel (voir plus bas).
+          const payloadManuel = JSON.parse(JSON.stringify(payload));
+          payload.manual_amount = false;
+          delete payload.amount_man;
           // Le N° de la facture dans bexio (document_no) = le même numéro interne que la Référence (ex: gavril26/001).
           // Si bexio refuse ce champ (numérotation automatique imposée, numéro déjà pris…), on retente sans lui.
           const postBill = (body) => fetch(`/bexio-proxy?path=/4.0/purchase/bills`, {
@@ -1788,6 +1793,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             const minimal = { ...payload, payment: paySansFee, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
             ir = await postBill({ ...minimal, document_no: d.numero_interne });
             if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(minimal);
+          }
+          // Dernier repli : version d'origine avec total manuel
+          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
+            ir = await postBill({ ...payloadManuel, document_no: d.numero_interne });
+            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(payloadManuel);
           }
           // Texte trop long : bexio indique sa limite (« max. N Zeichen ») -> on raccourcit titres et descriptions et on réessaie
           if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
