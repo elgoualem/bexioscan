@@ -1740,7 +1740,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               type: "COMPANY",
             },
             line_items: lignes.map((l, i) => ({
-              position: i + 1,
+              position: i, // bexio compte les lignes à partir de 0 (avec 1, la 1re ligne apparaît « 2 » et le formulaire ne la valide qu'après modification)
               // Description de ligne courte (limite de caractères bexio) : libellé tronqué, taux de TVA toujours conservé
               title: nettoyerTitre(texteBexio((lignes.length > 1 ? (libelleCourtCompte(l.compte_libelle) || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, ""), limiteTitre) || nettoyerTitre(texteBexio(d.fournisseur), limiteTitre) || "Facture",
               tax_id: l.tax_id || findTaxId(l.taux_tva),
