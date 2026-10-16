@@ -2030,7 +2030,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <div style={{ display: "flex", gap: 8 }}>
                   <select
                     value={moisActif.moisIdx}
-                    onChange={e => setMoisActifState(m => ({ ...m, moisIdx: parseInt(e.target.value, 10) }))}
+                    onChange={e => { const idx = parseInt(e.target.value, 10); setMoisActifState(m => ({ ...m, moisIdx: idx })); setMoisActif(idx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee); }}
                     style={{ ...S.select, flex: 2 }}
                   >
                     {MOIS_FR.map((m, i) => <option key={m} value={i}>{m}</option>)}
@@ -2038,7 +2038,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   <input
                     type="number"
                     value={moisActif.annee}
-                    onChange={e => setMoisActifState(m => ({ ...m, annee: parseInt(e.target.value, 10) || m.annee }))}
+                    onChange={e => { const an = parseInt(e.target.value, 10) || moisActif.annee; setMoisActifState(m => ({ ...m, annee: an })); if (an >= 2000) setMoisActif(moisActif.moisIdx, an); }}
                     style={{ ...S.input, flex: 1, marginBottom: 0 }}
                   />
                 </div>
