@@ -1027,7 +1027,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [originalFile, setOriginalFile] = useState(null);
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
-      const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, maj: "" }); // récap fournisseurs du mois
+      const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, fournisseursAn: [], nbAn: 0, totalAn: 0, annee: 0, maj: "" }); // récap fournisseurs du mois
       const [recapMois, setRecapMois] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
@@ -1867,26 +1867,31 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             if (arr.length < 500) break;
           }
           const prefixeMois = `${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
-          const dumois = factures.filter(b => String(b.bill_date || "").slice(0, 7) === prefixeMois);
+          const duan = factures.filter(b => String(b.bill_date || "").slice(0, 4) === String(annee));
+          const dumois = duan.filter(b => String(b.bill_date || "").slice(0, 7) === prefixeMois);
           // Noms des fournisseurs : directement sur la facture si dispo, sinon via les contacts bexio
           let contacts = {};
-          if (dumois.some(b => !(b.address && b.address.lastname_company) && !(b.supplier && b.supplier.name))) {
+          if (duan.some(b => !(b.address && b.address.lastname_company) && !(b.supplier && b.supplier.name))) {
             try {
               const rc = await fetch(`/bexio-proxy?path=/2.0/contact&limit=2000`, { headers: hdr });
               if (rc.ok) (await rc.json()).forEach(c => { contacts[c.id] = [c.name_1, c.name_2].filter(Boolean).join(" ").trim(); });
             } catch (_) {}
           }
-          const groupes = {};
-          dumois.forEach(b => {
-            const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
-            const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
-            const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
-            if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0 };
-            groupes[cle].nb++;
-            groupes[cle].total += montant;
-          });
-          const fournisseurs = Object.values(groupes).sort((a, b) => b.total - a.total);
-          setRecap({ chargement: false, erreur: "", fournisseurs, nb: dumois.length, total: fournisseurs.reduce((t, f) => t + f.total, 0), maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
+          const regrouper = (liste) => {
+            const groupes = {};
+            liste.forEach(b => {
+              const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
+              const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
+              const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
+              if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0 };
+              groupes[cle].nb++;
+              groupes[cle].total += montant;
+            });
+            return Object.values(groupes).sort((a, b) => b.total - a.total);
+          };
+          const fournisseurs = regrouper(dumois);
+          const fournisseursAn = regrouper(duan);
+          setRecap({ chargement: false, erreur: "", fournisseurs, nb: dumois.length, total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, nbAn: duan.length, totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
         } catch (e) {
           setRecap(r => ({ ...r, chargement: false, erreur: "Récapitulatif indisponible : " + e.message }));
         }
@@ -2249,6 +2254,20 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                       </div>
                     ))}
                     <div style={{ padding: "8px 16px", color: "#8FA3C4", fontSize: 11 }}>Données lues dans bexio à {recap.maj}</div>
+                  </div>
+                )}
+                {recap.fournisseursAn.length > 0 && (
+                  <div style={{ ...S.card2, padding: 0, overflow: "hidden", marginTop: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "#182645", borderBottom: "1px solid #3B5686" }}>
+                      <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Cumul {recap.annee} · {recap.fournisseursAn.length} fournisseur{recap.fournisseursAn.length > 1 ? "s" : ""} · {recap.nbAn} facture{recap.nbAn > 1 ? "s" : ""}</span>
+                      <span style={{ color: "#F5A524", fontWeight: 800, fontSize: 15 }}>{fCHF(recap.totalAn)}</span>
+                    </div>
+                    {recap.fournisseursAn.map(f => (
+                      <div key={f.nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #2F4468" }}>
+                        <span style={{ color: "#fff", fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</span>
+                        <span style={{ color: "#D3DDEC", fontSize: 13, whiteSpace: "nowrap" }}>{f.nb} fact. · <b style={{ color: "#fff" }}>{fCHF(f.total)}</b></span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
