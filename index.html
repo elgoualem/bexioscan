@@ -1737,6 +1737,13 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               // Description de ligne courte (limite de caractères bexio) : libellé tronqué, taux de TVA toujours conservé
               title: nettoyerTitre(texteBexio((lignes.length > 1 ? (libelleCourtCompte(l.compte_libelle) || d.description || d.fournisseur) : (d.description || d.fournisseur))).replace(/\s*\(?\d+([.,]\d+)?\s*%\)?/g, ""), limiteTitre) || nettoyerTitre(texteBexio(d.fournisseur), limiteTitre) || "Facture",
               tax_id: l.tax_id || findTaxId(l.taux_tva),
+              // Impôt de la ligne calculé côté app : sans lui, l'interface bexio ne considère la ligne « validée » qu'après une modification manuelle de la description
+              tax_calculated: (() => {
+                const tid = l.tax_id || findTaxId(l.taux_tva);
+                const tx = taxesBexio.find(x => String(x.id) === String(tid));
+                const taux = tx ? (parseFloat(tx.value) || 0) : (parseFloat(l.taux_tva) || 0);
+                return r2((parseFloat(l.montant_ht) || 0) * taux / 100);
+              })(),
               amount: r2(l.montant_ht),
               booking_account_id: resolveAccountId(l.compte_code),
             })),
@@ -1762,6 +1769,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
             ir = await postBill(payload);
             numeroBexioIdentique = false;
+          }
+          // Champ tax_calculated refusé par l'API : on réessaie sans lui
+          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
+            const sansTax = { ...payload, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
+            ir = await postBill({ ...sansTax, document_no: d.numero_interne });
+            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(sansTax);
           }
           // Texte trop long : bexio indique sa limite (« max. N Zeichen ») -> on raccourcit titres et descriptions et on réessaie
           if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
