@@ -1758,6 +1758,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               execution_date: dataOverride ? dateFormatted : dateReglement, // tickets consolidés : payés à la date de consolidation
               amount: r2(totals(d).ttc),
               salary_payment: false,
+              fee: 0, // champ « fee » obligatoire dans le formulaire de paiement bexio (sinon « Ces champs doivent encore être remplis : fee »)
               ...(pm === "IBAN" && d.iban ? { iban: d.iban.replace(/\s/g, ""), name: d.fournisseur.slice(0, 70) } : {}),
               ...(pm === "QR" && d.reference_no ? { reference_no: d.reference_qr } : {}),
             },
@@ -1780,6 +1781,13 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             const sansTax = { ...payload, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
             ir = await postBill({ ...sansTax, document_no: d.numero_interne });
             if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(sansTax);
+          }
+          // Champ fee refusé par l'API : dernier essai sans fee ni tax_calculated
+          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
+            const { fee, ...paySansFee } = payload.payment;
+            const minimal = { ...payload, payment: paySansFee, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
+            ir = await postBill({ ...minimal, document_no: d.numero_interne });
+            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(minimal);
           }
           // Texte trop long : bexio indique sa limite (« max. N Zeichen ») -> on raccourcit titres et descriptions et on réessaie
           if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
