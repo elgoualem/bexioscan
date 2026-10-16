@@ -1884,9 +1884,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
               const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
               if (CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
-              if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0 };
+              if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
               groupes[cle].nb++;
               groupes[cle].total += montant;
+              const mi = parseInt(String(b.bill_date || "").slice(5, 7), 10) - 1;
+              if (mi >= 0 && mi < 12) groupes[cle].mois[mi] = (groupes[cle].mois[mi] || 0) + montant;
             });
             return Object.values(groupes).sort((a, b) => b.total - a.total);
           };
@@ -2265,7 +2267,12 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     </div>
                     {recap.fournisseursAn.map(f => (
                       <div key={f.nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #2F4468" }}>
-                        <span style={{ color: "#fff", fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: "#fff", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</div>
+                          <div style={{ color: "#8FA3C4", fontSize: 12, marginTop: 3 }}>
+                            {Object.keys(f.mois).map(Number).sort((a, b) => a - b).map(mi => `${MOIS_FR[mi].slice(0, 4)}. ${fCHF(f.mois[mi])}`).join(" · ")}
+                          </div>
+                        </div>
                         <span style={{ color: "#D3DDEC", fontSize: 13, whiteSpace: "nowrap" }}>{f.nb} fact. · <b style={{ color: "#fff" }}>{fCHF(f.total)}</b></span>
                       </div>
                     ))}
