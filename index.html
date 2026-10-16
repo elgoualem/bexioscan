@@ -501,14 +501,20 @@
     // Si l'utilisateur a modifié/saisi le numéro interne à la main, le compteur du mois doit repartir de là
     // (format g{mois}{aa}/{seq}) pour que la prochaine proposition soit seq+1.
     function syncCompteurDepuisNumero(numeroInterne) {
-      const m = /^g([a-zéû]+)(\d{2})\/(\d+)$/i.exec((numeroInterne || "").trim());
+      // Tolérant : accents/fautes sur le mois (gaôut26, gaout26, gAoût26…) -> on compare sans accents sur les 3 premières lettres
+      const m = /^g([^\d\/\s]+)\s*(\d{2})\s*\/\s*(\d+)$/i.exec((numeroInterne || "").trim());
       if (!m) return;
-      const moisIdx = MOIS_FR.findIndex(mo => mo.toLowerCase() === m[1].toLowerCase());
-      if (moisIdx === -1) return;
-      const annee = 2000 + parseInt(m[2], 10);
+      const sans = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const cherche = sans(m[1]).slice(0, 3);
+      let moisIdx = MOIS_FR.findIndex(mo => sans(mo).slice(0, 3) === cherche);
+      let annee = 2000 + parseInt(m[2], 10);
+      // Mois illisible : on rattache au mois actif de la numérotation plutôt que d'ignorer la saisie
+      if (moisIdx === -1) { const act = getMoisActif(); moisIdx = act.moisIdx; annee = act.annee; }
       const seq = parseInt(m[3], 10);
       const cle = `bx_compteur_${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
       localStorage.setItem(cle, String(seq));
+      // Le mois saisi à la main devient le mois actif : les prochains numéros suivent ta correction
+      try { setMoisActif(moisIdx, annee); } catch (_) {}
     }
 
     // Normalisation du nom d'enseigne pour regrouper les variantes OCR (ex: "Coop Genève Charmilles" → "Coop")
@@ -2516,6 +2522,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     await Promise.all(ticketsEnseigne.map(t => t.ficId ? idbDeleteFichier(t.ficId) : Promise.resolve()));
                     const restants = JSON.parse(localStorage.getItem(cleTickets) || "[]").filter(t => t.fournisseur !== enseigne);
                     localStorage.setItem(cleTickets, JSON.stringify(restants));
+                    setNumeroOverrides(o => { const c = { ...o }; delete c[enseigne]; return c; });
                   }
                   setStep(4);
                 } catch(e) {
