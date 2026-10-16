@@ -679,12 +679,15 @@ const nettoyerTitre = (t, max) => {
   // Premier mot déjà trop long : on le garde entier plutôt que de le couper
   if (!res) res = mots[0] || "";
   // Pas de mot de liaison orphelin en fin de description (« Achats de », « Matériel d' »)
-  res = res.replace(/(\s+(de|d'|du|des|la|le|les|et|à|au|aux|en|pour|sur))+$/i, "").replace(/[\s\-,;:.\/(&+']+$/, "").trim();
+  res = res.replace(/(\s+(de|d'|du|des|la|le|les|et|à|au|aux|en|pour|sur|non))+$/i, "").replace(/[\s\-,;:.\/(&+']+$/, "").trim();
   return res || mots[0] || "";
 };
 // Libellé court d'un compte : « Achats de marchandises commerciales » -> « Marchandises commerciales »
 const libelleCourtCompte = (t) => {
-  const c = (t || "").replace(/^\s*achats?\s+(de |d'|des |du )?/i, "").trim();
+  let c = (t || "").replace(/^\s*achats?\s+(de |d'|des |du )?/i, "").trim();
+  // Tout en français : un mot anglais (« food ») est souligné en rouge par le correcteur bexio
+  c = c.replace(/\bnon[\s-]?food\b/gi, "non alimentaire").replace(/\bfood\b/gi, "alimentaire");
+  c = c.replace(/^mati[eè]res?\s+(non alimentaire)/i, "$1");
   return c ? c.charAt(0).toUpperCase() + c.slice(1) : (t || "");
 };
 const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
@@ -1198,6 +1201,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
 
 Ce document peut comporter PLUSIEURS PAGES. Deux cas bien distincts, à ne pas confondre :
 1. UNE SEULE facture qui continue sur plusieurs pages (même fournisseur, même numéro de facture, articles qui se poursuivent, un seul total final en dernière page) → traite-la comme UN SEUL document, additionne les lignes de toutes les pages, utilise le total final.
+LANGUE : toutes les descriptions (champs "description" et "compte_libelle") doivent être en FRANÇAIS correct, sans mot anglais (écris « non alimentaire », jamais « non food »).
 ENSEIGNE DES TICKETS : le nom du magasin est celui du logo / de l'en-tête en haut du ticket (ex: "Inter Discount", "Coop", "Denner"). Ne te fie PAS à la mention légale en bas ("COOP Société coopérative, CHE-...") : un ticket Inter Discount garde le fournisseur "Inter Discount" même s'il cite Coop en bas.
 2. PLUSIEURS tickets de caisse DIFFÉRENTS, un par page ou plusieurs par photo (dates/heures/totaux différents, même si c'est la même enseigne comme Coop ou Denner) → NE LES FUSIONNE JAMAIS ensemble. Chaque page/ticket distinct doit devenir sa propre entrée dans le tableau "tickets". Compte bien CHAQUE ticket visible sur CHAQUE page — si le document a 13 pages avec 13 tickets différents, le tableau "tickets" doit contenir 13 entrées, pas moins.
 
