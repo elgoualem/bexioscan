@@ -1316,7 +1316,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 lignes_tva: t.lignes_tva,
                 compte_suggere_code: t.compte_suggere_code || "4200",
                 mode_paiement: t.mode_paiement || null,
-                numero_interne: genererNumeroFacture(),
+                numero_interne: null, // les tickets ne consomment PAS de numéro : il est attribué à la consolidation
                 ts: Date.now(),
                 fichier: { base64, type: f.type, name: f.name },
                 possibleDoublon: estPossibleDoublon,
@@ -1371,7 +1371,6 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           if (!Array.isArray(parsed.lignes_tva) || parsed.lignes_tva.length === 0) {
             parsed.lignes_tva = [{ montant_ht: parsed.montant_ht || 0, taux_tva: parsed.taux_tva ?? 8.1, montant_tva: parsed.montant_tva || 0 }];
           }
-          parsed.numero_interne = genererNumeroFacture();
 
           // Détection tickets de caisse Coop/Denner/Lidl/Aldi → mise en attente pour consolidation à la demande
           const ENSEIGNES_TICKET = ["coop", "denner", "lidl", "aldi", "inter discount", "interdiscount"];
@@ -1392,7 +1391,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               lignes_tva: parsed.lignes_tva,
               compte_suggere_code: parsed.compte_suggere_code,
               mode_paiement: parsed.mode_paiement || null,
-              numero_interne: parsed.numero_interne,
+              numero_interne: null,
               ts: Date.now(),
               fichier: { base64, type: f.type, name: f.name },
               possibleDoublon: estPossibleDoublon,
@@ -1400,13 +1399,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             sigSet.add(sig);
             sauverSignatures(sigSet);
             await ajouterTicketsEnAttente(cleTickets, [objetTicket]);
-            genererNumeroFacture.__annuler = true; // marqueur pour ne pas incrémenter 2 fois
             setError(estPossibleDoublon ? "Ce ticket ressemble à un scan déjà fait (même enseigne, date et montant) — marqué \"possible doublon\", vérifie avant de consolider. Il est bien ajouté à la file d'attente." : "");
             setStep(5); // écran dédié "ticket mis en attente"
             setLoading(false);
             setLoadingMsg("");
             return;
           }
+
+          parsed.numero_interne = genererNumeroFacture(); // facture classique uniquement
 
           // Facture classique : avertissement (pas blocage) si même fournisseur+date+montant déjà scanné
           const sigFacture = signatureFacture(parsed.fournisseur, parsed.date_facture, parsed.montant_ttc);
