@@ -1028,6 +1028,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
       const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, maj: "" }); // récap fournisseurs du mois
+      const [recapMois, setRecapMois] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
       const [pages, setPages] = useState([]);
@@ -1891,8 +1892,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         }
       }
       useEffect(() => {
-        if (step === 1 && token) chargerRecap(moisActif.moisIdx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee);
-      }, [step, token, moisActif.moisIdx, moisActif.annee]);
+        if (step === 1 && token) chargerRecap(recapMois.moisIdx, recapMois.annee);
+      }, [step, token, recapMois.moisIdx, recapMois.annee]);
 
       // Quand on revient sur un mois : on cherche dans bexio le plus grand n° g{mois}{aa}/NNN déjà utilisé, et le compteur repart de là (prochain = +1)
       async function synchroniserMoisDepuisBexio(moisIdx, annee) {
@@ -2220,9 +2221,15 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
 
                 <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <label style={{ ...S.label, marginBottom: 0 }}>Achats du mois — {MOIS_FR[moisActif.moisIdx]} {moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee}</label>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <label style={{ ...S.label, marginBottom: 0 }}>Achats de</label>
+                    <select value={recapMois.moisIdx} onChange={e => setRecapMois(r => ({ ...r, moisIdx: parseInt(e.target.value, 10) }))} style={{ ...S.input, width: "auto", padding: "6px 10px" }}>
+                      {MOIS_FR.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                    <input type="number" value={recapMois.annee} onChange={e => { const v = parseInt(e.target.value, 10); if (v > 2000 && v < 2100) setRecapMois(r => ({ ...r, annee: v })); }} style={{ ...S.input, width: 80, padding: "6px 10px" }} />
+                  </div>
                   <button
-                    onClick={() => chargerRecap(moisActif.moisIdx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee)}
+                    onClick={() => chargerRecap(recapMois.moisIdx, recapMois.annee)}
                     disabled={recap.chargement}
                     style={{ background: "transparent", border: "1px solid #3B5686", color: "#D3DDEC", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
                   >{recap.chargement ? "Chargement…" : "Actualiser"}</button>
