@@ -1027,6 +1027,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [originalFile, setOriginalFile] = useState(null);
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
+      const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, maj: "" }); // récap fournisseurs du mois
       const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
       const [pages, setPages] = useState([]);
@@ -1849,6 +1850,50 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
       }
 
       // Recherche dans bexio d'une facture fournisseur déjà existante (même date + même montant, ou même référence)
+      // Récapitulatif dynamique du mois : fournisseurs d'achats, nombre de factures et montants, lus en direct dans bexio
+      async function chargerRecap(moisIdx, annee) {
+        if (!token) { setRecap(r => ({ ...r, erreur: "Saisis ton token bexio pour afficher le récapitulatif.", fournisseurs: [], nb: 0, total: 0 })); return; }
+        setRecap(r => ({ ...r, chargement: true, erreur: "" }));
+        try {
+          const hdr = { "x-bexio-token": token, Accept: "application/json" };
+          const factures = [];
+          for (let offset = 0; offset < 5000; offset += 500) {
+            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500&offset=${offset}`, { headers: hdr });
+            if (!r.ok) { if (offset === 0) throw new Error(`bexio ${r.status}`); break; }
+            const liste = await r.json();
+            const arr = Array.isArray(liste) ? liste : (liste.data || []);
+            factures.push(...arr);
+            if (arr.length < 500) break;
+          }
+          const prefixeMois = `${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
+          const dumois = factures.filter(b => String(b.bill_date || "").slice(0, 7) === prefixeMois);
+          // Noms des fournisseurs : directement sur la facture si dispo, sinon via les contacts bexio
+          let contacts = {};
+          if (dumois.some(b => !(b.address && b.address.lastname_company) && !(b.supplier && b.supplier.name))) {
+            try {
+              const rc = await fetch(`/bexio-proxy?path=/2.0/contact&limit=2000`, { headers: hdr });
+              if (rc.ok) (await rc.json()).forEach(c => { contacts[c.id] = [c.name_1, c.name_2].filter(Boolean).join(" ").trim(); });
+            } catch (_) {}
+          }
+          const groupes = {};
+          dumois.forEach(b => {
+            const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
+            const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
+            const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
+            if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0 };
+            groupes[cle].nb++;
+            groupes[cle].total += montant;
+          });
+          const fournisseurs = Object.values(groupes).sort((a, b) => b.total - a.total);
+          setRecap({ chargement: false, erreur: "", fournisseurs, nb: dumois.length, total: fournisseurs.reduce((t, f) => t + f.total, 0), maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
+        } catch (e) {
+          setRecap(r => ({ ...r, chargement: false, erreur: "Récapitulatif indisponible : " + e.message }));
+        }
+      }
+      useEffect(() => {
+        if (step === 1 && token) chargerRecap(moisActif.moisIdx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee);
+      }, [step, token, moisActif.moisIdx, moisActif.annee]);
+
       // Quand on revient sur un mois : on cherche dans bexio le plus grand n° g{mois}{aa}/NNN déjà utilisé, et le compteur repart de là (prochain = +1)
       async function synchroniserMoisDepuisBexio(moisIdx, annee) {
         setInfoMois("");
@@ -2172,6 +2217,33 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   </button>
                 </div>
                 <p style={S.hint}>La prochaine facture portera ce numéro pour le mois choisi ci-dessus, puis la suite s'incrémente seule — quelle que soit la date réelle du scan.</p>
+
+                <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <label style={{ ...S.label, marginBottom: 0 }}>Achats du mois — {MOIS_FR[moisActif.moisIdx]} {moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee}</label>
+                  <button
+                    onClick={() => chargerRecap(moisActif.moisIdx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee)}
+                    disabled={recap.chargement}
+                    style={{ background: "transparent", border: "1px solid #3B5686", color: "#D3DDEC", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
+                  >{recap.chargement ? "Chargement…" : "Actualiser"}</button>
+                </div>
+                {recap.erreur && <p style={{ ...S.hint, color: "#FCA5A5" }}>{recap.erreur}</p>}
+                {!recap.erreur && !recap.chargement && recap.fournisseurs.length === 0 && recap.maj && <p style={S.hint}>Aucune facture fournisseur enregistrée ce mois-ci.</p>}
+                {recap.fournisseurs.length > 0 && (
+                  <div style={{ ...S.card2, padding: 0, overflow: "hidden" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "#182645", borderBottom: "1px solid #3B5686" }}>
+                      <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{recap.fournisseurs.length} fournisseur{recap.fournisseurs.length > 1 ? "s" : ""} · {recap.nb} facture{recap.nb > 1 ? "s" : ""}</span>
+                      <span style={{ color: "#F5A524", fontWeight: 800, fontSize: 15 }}>{fCHF(recap.total)}</span>
+                    </div>
+                    {recap.fournisseurs.map(f => (
+                      <div key={f.nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #2F4468" }}>
+                        <span style={{ color: "#fff", fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</span>
+                        <span style={{ color: "#D3DDEC", fontSize: 13, whiteSpace: "nowrap" }}>{f.nb} fact. · <b style={{ color: "#fff" }}>{fCHF(f.total)}</b></span>
+                      </div>
+                    ))}
+                    <div style={{ padding: "8px 16px", color: "#8FA3C4", fontSize: 11 }}>Données lues dans bexio à {recap.maj}</div>
+                  </div>
+                )}
               </div>
             )}
 
