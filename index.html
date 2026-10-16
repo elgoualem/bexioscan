@@ -1883,6 +1883,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
               const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
               const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
+              if (CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0 };
               groupes[cle].nb++;
               groupes[cle].total += montant;
@@ -1891,7 +1892,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           };
           const fournisseurs = regrouper(dumois);
           const fournisseursAn = regrouper(duan);
-          setRecap({ chargement: false, erreur: "", fournisseurs, nb: dumois.length, total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, nbAn: duan.length, totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
+          setRecap({ chargement: false, erreur: "", fournisseurs, nb: fournisseurs.reduce((t, f) => t + f.nb, 0), total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, nbAn: fournisseursAn.reduce((t, f) => t + f.nb, 0), totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
         } catch (e) {
           setRecap(r => ({ ...r, chargement: false, erreur: "Récapitulatif indisponible : " + e.message }));
         }
