@@ -441,6 +441,20 @@
       return `g${mois}${String(annee).slice(-2)}/${String(compteur).padStart(3, "0")}`;
     }
 
+    // Écart de quelques centimes entre la somme des lignes et le total imprimé -> ligne d'arrondi automatique
+    // (6896 pertes si le total est supérieur aux lignes, 6846 gains s'il est inférieur). Retourne l'écart restant.
+    function ajouterLigneArrondi(doc) {
+      const lignes = doc.lignes_tva || [];
+      const somme = lignes.reduce((t, l) => t + (parseFloat(l.montant_ht) || 0) + (parseFloat(l.montant_tva) || 0), 0);
+      const ecart = Math.round(((parseFloat(doc.montant_ttc) || 0) - somme) * 100) / 100;
+      if (ecart !== 0 && Math.abs(ecart) < 0.10 && !lignes.some(l => l.arrondi)) {
+        lignes.push({ arrondi: true, montant_ht: ecart, taux_tva: 0, montant_tva: 0, compte_code: ecart > 0 ? "6896" : "6846", compte_libelle: "Arrondi", description: "Arrondi" });
+        doc.lignes_tva = lignes;
+        return 0;
+      }
+      return ecart;
+    }
+
     // Incrémente le dernier nombre d'un numéro en gardant le zéro-padding (gjuillet26/008 -> gjuillet26/009)
     function incrementerNumero(n) {
       return (n || "").replace(/(\d+)(\D*)$/, (_, d, suite) => String(parseInt(d, 10) + 1).padStart(d.length, "0") + suite);
@@ -1333,6 +1347,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   fichierFa = (await pdfPagesVersFichier(base64, fa.pages, nomFa)) || f;
                 } catch (_) { fichierFa = f; }
               }
+              ajouterLigneArrondi(fa);
               const somme = fa.lignes_tva.reduce((t, l) => t + (parseFloat(l.montant_ht) || 0) + (parseFloat(l.montant_tva) || 0), 0);
               const ecartFa = Math.round(((parseFloat(fa.montant_ttc) || 0) - somme) * 100) / 100;
               const avert = [];
@@ -1403,6 +1418,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           // Contrôle fiable (calcul, pas une supposition du modèle) : la somme des lignes TVA doit correspondre
           // au montant_ttc annoncé. Le prompt seul n'empêche pas Claude d'oublier/dédoubler une catégorie —
           // ce calcul le détecte à coup sûr, quelle que soit la cause exacte de l'écart.
+          ajouterLigneArrondi(parsed);
           const sommeLignesTtc = (parsed.lignes_tva || []).reduce((s, l) => s + (parseFloat(l.montant_ht) || 0) + (parseFloat(l.montant_tva) || 0), 0);
           const montantAnnonce = parseFloat(parsed.montant_ttc) || 0;
           const ecart = Math.round((montantAnnonce - sommeLignesTtc) * 100) / 100;
