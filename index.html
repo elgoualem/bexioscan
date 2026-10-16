@@ -2407,6 +2407,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   const lk = `${compte}|${l.taux_tva}`;
                   if (!parEnseigne[k].lignes[lk]) parEnseigne[k].lignes[lk] = { compte_code: compte, taux_tva: l.taux_tva, description: l.description || "", montant_ht: 0 };
                   parEnseigne[k].lignes[lk].montant_ht += parseFloat(l.montant_ht) || 0;
+                  // Même compte/taux sur plusieurs tickets : on cumule les descriptions de TOUS les tickets (pas seulement le premier)
+                  const dsc = (l.description || "").trim();
+                  if (dsc && !parEnseigne[k].lignes[lk].description.toLowerCase().includes(dsc.toLowerCase())) {
+                    parEnseigne[k].lignes[lk].description = parEnseigne[k].lignes[lk].description ? `${parEnseigne[k].lignes[lk].description} + ${dsc}` : dsc;
+                  }
                 });
               });
 
