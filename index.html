@@ -1027,6 +1027,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [originalFile, setOriginalFile] = useState(null);
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
+      const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
       const [pages, setPages] = useState([]);
       const [preview, setPreview] = useState(null);
@@ -1828,6 +1829,32 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
       }
 
       // Recherche dans bexio d'une facture fournisseur déjà existante (même date + même montant, ou même référence)
+      // Quand on revient sur un mois : on cherche dans bexio le plus grand n° g{mois}{aa}/NNN déjà utilisé, et le compteur repart de là (prochain = +1)
+      async function synchroniserMoisDepuisBexio(moisIdx, annee) {
+        setInfoMois("");
+        if (!token) return;
+        try {
+          const sans = t => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const prefixe = `g${sans(MOIS_FR[moisIdx])}${String(annee).slice(-2)}/`;
+          let max = 0;
+          for (let offset = 0; offset < 2000; offset += 500) {
+            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500&offset=${offset}`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+            if (!r.ok) break;
+            const liste = await r.json();
+            const arr = Array.isArray(liste) ? liste : (liste.data || []);
+            arr.forEach(b => [b.vendor_ref, b.document_no].forEach(v => {
+              const t = sans(String(v || "").trim());
+              if (t.startsWith(prefixe)) { const n = parseInt(t.slice(prefixe.length), 10); if (n > max) max = n; }
+            }));
+            if (arr.length < 500) break;
+          }
+          if (max > 0) {
+            localStorage.setItem(`bx_compteur_${annee}-${String(moisIdx + 1).padStart(2, "0")}`, String(max));
+            setInfoMois(`Dernier n° dans bexio : g${MOIS_FR[moisIdx]}${String(annee).slice(-2)}/${String(max).padStart(3, "0")} → prochain : ${String(max + 1).padStart(3, "0")}`);
+          }
+        } catch (_) {}
+      }
+
       async function chercherDoublons(d) {
         setDoublons([]);
         if (!token || !d || !d.date_facture) return;
@@ -2077,7 +2104,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 <div style={{ display: "flex", gap: 8 }}>
                   <select
                     value={moisActif.moisIdx}
-                    onChange={e => { const idx = parseInt(e.target.value, 10); setMoisActifState(m => ({ ...m, moisIdx: idx })); setMoisActif(idx, moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee); }}
+                    onChange={e => { const idx = parseInt(e.target.value, 10); setMoisActifState(m => ({ ...m, moisIdx: idx })); const an0 = moisActif.annee < 100 ? 2000 + moisActif.annee : moisActif.annee; setMoisActif(idx, an0); synchroniserMoisDepuisBexio(idx, an0); }}
                     style={{ ...S.select, flex: 2 }}
                   >
                     {MOIS_FR.map((m, i) => <option key={m} value={i}>{m}</option>)}
@@ -2085,12 +2112,13 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   <input
                     type="number"
                     value={moisActif.annee}
-                    onChange={e => { const an = parseInt(e.target.value, 10) || moisActif.annee; setMoisActifState(m => ({ ...m, annee: an })); if (an >= 2000) setMoisActif(moisActif.moisIdx, an); }}
+                    onChange={e => { const an = parseInt(e.target.value, 10) || moisActif.annee; setMoisActifState(m => ({ ...m, annee: an })); if (an >= 2000) { setMoisActif(moisActif.moisIdx, an); synchroniserMoisDepuisBexio(moisActif.moisIdx, an); } }}
                     style={{ ...S.input, flex: 1, marginBottom: 0 }}
                   />
                 </div>
                 <p style={S.hint}>Le libellé (ex. g{MOIS_FR[moisActif.moisIdx]}{String(moisActif.annee).slice(-2)}) ne dépend ni de la date du jour ni de la date de la facture — il reste celui choisi ici tant que tu ne le changes pas.</p>
 
+                {infoMois && <p style={{ ...S.hint, color: "#F5A524" }}>{infoMois}</p>}
                 <label style={{ ...S.label, marginTop: 16 }}>N° de départ pour ce mois</label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ color: "#F5A524", fontSize: 15, fontWeight: 600, fontFamily: MONO }}>g{MOIS_FR[moisActif.moisIdx]}{String(moisActif.annee).slice(-2)}/</span>
