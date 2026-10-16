@@ -1882,13 +1882,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             liste.forEach(b => {
               const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
               const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
-              const cle = b.supplier_id ? `id${b.supplier_id}` : nom.toLowerCase();
+              const cle = nom.split("(")[0].trim().toLowerCase(); // « SIG » et « SIG (Services Industriels…) » = même fournisseur
               if (CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
+              if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
               groupes[cle].nb++;
               groupes[cle].total += montant;
               const mi = parseInt(String(b.bill_date || "").slice(5, 7), 10) - 1;
-              if (mi >= 0 && mi < 12) groupes[cle].mois[mi] = (groupes[cle].mois[mi] || 0) + montant;
+              if (mi >= 0 && mi < 12) { const m = groupes[cle].mois[mi] || { nb: 0, total: 0 }; m.nb++; m.total += montant; groupes[cle].mois[mi] = m; }
             });
             return Object.values(groupes).sort((a, b) => b.total - a.total);
           };
@@ -2270,7 +2271,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                         <div style={{ minWidth: 0 }}>
                           <div style={{ color: "#fff", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</div>
                           <div style={{ color: "#8FA3C4", fontSize: 12, marginTop: 3 }}>
-                            {Object.keys(f.mois).map(Number).sort((a, b) => a - b).map(mi => `${MOIS_FR[mi].slice(0, 4)}. ${fCHF(f.mois[mi])}`).join(" · ")}
+                            {Object.keys(f.mois).map(Number).sort((a, b) => a - b).map(mi => `${MOIS_FR[mi].slice(0, 4)}. (${f.mois[mi].nb}) ${fCHF(f.mois[mi].total)}`).join(" · ")}
                           </div>
                         </div>
                         <span style={{ color: "#D3DDEC", fontSize: 13, whiteSpace: "nowrap" }}>{f.nb} fact. · <b style={{ color: "#fff" }}>{fCHF(f.total)}</b></span>
