@@ -1884,7 +1884,10 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             liste.forEach(b => {
               const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
               const montant = parseFloat(b.gross ?? b.amount_man ?? b.net ?? 0) || 0;
-              const cle = nom.split("(")[0].trim().toLowerCase(); // « SIG » et « SIG (Services Industriels…) » = même fournisseur
+              // Même fournisseur malgré les variantes d'écriture : « SIG » / « SIG (Services Industriels…) », « Feldschosschen/ » / « Feldschlösschen Getränke AG »…
+              const base = nom.split("(")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+              const premierMot = (base.match(/[a-z0-9]+/) || [""])[0];
+              const cle = premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
               if (CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
               if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
