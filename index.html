@@ -1775,45 +1775,47 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             headers: { "x-bexio-token": token, "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify(body),
           });
-          let ir = await postBill({ ...payload, document_no: d.numero_interne });
+          const sansTaxCalc = (p) => ({ ...p, line_items: p.line_items.map(({ tax_calculated, ...li }) => li) });
+          const sansFee = (p) => { const { fee, ...pay } = p.payment; return { ...p, payment: pay }; };
+          const peutRetenter = (r) => !r.ok && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403;
+          // Variantes de la plus complète à la plus sûre (la dernière = ce qui fonctionnait avant : total manuel, sans fee ni tax_calculated)
+          const variantes = [
+            payload,
+            sansTaxCalc(payload),
+            sansFee(sansTaxCalc(payload)),
+            sansTaxCalc(payloadManuel),
+            sansFee(sansTaxCalc(payloadManuel)),
+          ];
+          let ir = null;
           let numeroBexioIdentique = true;
-          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
-            ir = await postBill(payload);
-            numeroBexioIdentique = false;
-          }
-          // Champ tax_calculated refusé par l'API : on réessaie sans lui
-          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
-            const sansTax = { ...payload, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
-            ir = await postBill({ ...sansTax, document_no: d.numero_interne });
-            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(sansTax);
-          }
-          // Champ fee refusé par l'API : dernier essai sans fee ni tax_calculated
-          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
-            const { fee, ...paySansFee } = payload.payment;
-            const minimal = { ...payload, payment: paySansFee, line_items: payload.line_items.map(({ tax_calculated, ...li }) => li) };
-            ir = await postBill({ ...minimal, document_no: d.numero_interne });
-            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(minimal);
-          }
-          // Dernier repli : version d'origine avec total manuel
-          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
-            ir = await postBill({ ...payloadManuel, document_no: d.numero_interne });
-            if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) ir = await postBill(payloadManuel);
+          const erreursEnvoi = [];
+          for (const v of variantes) {
+            ir = await postBill({ ...v, document_no: d.numero_interne });
+            numeroBexioIdentique = true;
+            if (peutRetenter(ir)) {
+              erreursEnvoi.push((await ir.clone().text()).slice(0, 160));
+              ir = await postBill(v); // sans document_no (numérotation automatique imposée par bexio)
+              numeroBexioIdentique = false;
+            }
+            if (ir.ok || !peutRetenter(ir)) break;
+            erreursEnvoi.push((await ir.clone().text()).slice(0, 160));
           }
           // Texte trop long : bexio indique sa limite (« max. N Zeichen ») -> on raccourcit titres et descriptions et on réessaie
-          if (!ir.ok && ir.status >= 400 && ir.status < 500 && ir.status !== 401 && ir.status !== 403) {
+          if (peutRetenter(ir)) {
             const txtErr = await ir.clone().text();
             const mLim = txtErr.match(/max\.?\s*(\d+)\s*(?:Zeichen|char|caract)/i);
             if (mLim) {
               const N = parseInt(mLim[1], 10);
               try { localStorage.setItem("bx_limite_titre", String(Math.min(N, limiteTitre))); } catch (_) {}
+              const base = sansFee(sansTaxCalc(payloadManuel));
               ir = await postBill({
-                ...payload,
-                title: (payload.title || "").slice(0, N),
-                line_items: payload.line_items.map(li => ({ ...li, title: nettoyerTitre(li.title, N) })),
+                ...base,
+                title: (base.title || "").slice(0, N),
+                line_items: base.line_items.map(li => ({ ...li, title: nettoyerTitre(li.title, N) })),
               });
             }
           }
-          if (!ir.ok) { const err = await ir.text(); throw new Error(`bexio ${ir.status}: ${err}`); }
+          if (!ir.ok) { const err = await ir.text(); throw new Error(`bexio ${ir.status}: ${err}${erreursEnvoi.length ? " | essais précédents : " + [...new Set(erreursEnvoi)].join(" ; ") : ""}`); }
           const inv = await ir.json();
 
           // Vérifie que bexio a bien mis le numéro interne dans la case « N° » ; sinon tente de le corriger après coup.
@@ -1970,8 +1972,11 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
       // cash/carte/TWINT) ou échéance (virement) — plus la date du jour par défaut.
       useEffect(() => {
         if (step !== 3 || !data) return;
-        const iso = dateVersIso(data.date_reglement)
-          || (paymentMode === "MANUAL" ? dateVersIso(data.date_facture) : (dateVersIso(data.date_echeance) || dateVersIso(data.date_facture)));
+        // Virement / QR-facture : le paiement a lieu à l'échéance (ex. 30 jours) — on ignore toute « date de règlement » devinée par l'IA.
+        // Espèces / carte / TWINT (MANUAL) : paiement immédiat = date lue sur le document, sinon date de la facture.
+        const iso = paymentMode === "MANUAL"
+          ? (dateVersIso(data.date_reglement) || dateVersIso(data.date_facture))
+          : (dateVersIso(data.date_echeance) || dateVersIso(data.date_facture));
         if (iso) setDateReglement(iso);
       }, [step, data?.numero_interne, data?.date_facture, data?.date_echeance, data?.date_reglement, paymentMode]);
 
