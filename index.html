@@ -512,11 +512,12 @@
     }
 
     // Normalisation du nom d'enseigne pour regrouper les variantes OCR (ex: "Coop Genève Charmilles" → "Coop")
-    const CHAINES_CONNUES = ["coop", "denner", "lidl", "aldi"];
+    const CHAINES_CONNUES = ["inter discount", "interdiscount", "denner", "lidl", "aldi", "coop"]; // Inter Discount avant Coop : ses tickets mentionnent « COOP Société coopérative » en bas
     function normaliserEnseigne(nom) {
       const n = (nom || "").toLowerCase();
       if (["genossenschaft", "coop genossenschaft"].some(e => n.includes(e))) return (nom || "").trim();
       const chaine = CHAINES_CONNUES.find(c => n.includes(c));
+      if (chaine === "inter discount" || chaine === "interdiscount") return "Inter Discount";
       return chaine ? chaine.charAt(0).toUpperCase() + chaine.slice(1) : (nom || "").trim();
     }
 
@@ -1171,11 +1172,12 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
 
 Ce document peut comporter PLUSIEURS PAGES. Deux cas bien distincts, à ne pas confondre :
 1. UNE SEULE facture qui continue sur plusieurs pages (même fournisseur, même numéro de facture, articles qui se poursuivent, un seul total final en dernière page) → traite-la comme UN SEUL document, additionne les lignes de toutes les pages, utilise le total final.
+ENSEIGNE DES TICKETS : le nom du magasin est celui du logo / de l'en-tête en haut du ticket (ex: "Inter Discount", "Coop", "Denner"). Ne te fie PAS à la mention légale en bas ("COOP Société coopérative, CHE-...") : un ticket Inter Discount garde le fournisseur "Inter Discount" même s'il cite Coop en bas.
 2. PLUSIEURS tickets de caisse DIFFÉRENTS, un par page ou plusieurs par photo (dates/heures/totaux différents, même si c'est la même enseigne comme Coop ou Denner) → NE LES FUSIONNE JAMAIS ensemble. Chaque page/ticket distinct doit devenir sa propre entrée dans le tableau "tickets". Compte bien CHAQUE ticket visible sur CHAQUE page — si le document a 13 pages avec 13 tickets différents, le tableau "tickets" doit contenir 13 entrées, pas moins.
 
 ATTENTION AU DOUBLE COMPTAGE : certaines factures (ex : grossistes comme Prodega/Transgourmet) affichent des SOUS-TOTAUX par catégorie de produit (ex : "Alimentaire", "Vin", "Boissons", "Non alimentaire") intercalés entre les lignes d'articles, PUIS un tableau récapitulatif final "Regroupement par type de TVA" ou "Total facture" en fin de document. Ces sous-totaux de catégorie ne sont PAS des lignes d'achat supplémentaires — ce sont des totaux intermédiaires qui reprennent des articles déjà listés au-dessus. Ne les additionne JAMAIS en plus des articles ou du récapitulatif final : choisis UNE SEULE source pour le total (de préférence le tableau récapitulatif final par taux de TVA s'il existe), sinon tu vas gonfler le montant total par rapport à la vraie facture.
 
-Il peut contenir UN SEUL document (facture ou ticket), PLUSIEURS tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi) photographiés ensemble ou sur des pages séparées, ET/OU PLUSIEURS FACTURES FOURNISSEUR DISTINCTES scannées d'un coup dans un même PDF (lot de factures : loyer, grossiste, énergie, télécom, assurances, etc.).
+Il peut contenir UN SEUL document (facture ou ticket), PLUSIEURS tickets de caisse de supermarchés (Coop, Lidl, Denner, Aldi, Inter Discount) photographiés ensemble ou sur des pages séparées, ET/OU PLUSIEURS FACTURES FOURNISSEUR DISTINCTES scannées d'un coup dans un même PDF (lot de factures : loyer, grossiste, énergie, télécom, assurances, etc.).
 
 Si tu détectes PLUSIEURS tickets sur l'image, retourne un objet JSON avec un tableau "tickets" contenant chaque ticket séparément.
 Avant de répondre, PARCOURS LE DOCUMENT PAGE PAR PAGE et COMPTE les documents distincts : un changement de fournisseur, d'en-tête, de numéro de facture, de date ou un nouveau total final = une NOUVELLE facture. Si tu en comptes plusieurs (même si ce sont des factures de natures très différentes), tu DOIS utiliser le format "factures" ci-dessous, jamais l'objet standard.
@@ -1345,7 +1347,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           parsed.numero_interne = genererNumeroFacture();
 
           // Détection tickets de caisse Coop/Denner/Lidl/Aldi → mise en attente pour consolidation à la demande
-          const ENSEIGNES_TICKET = ["coop", "denner", "lidl", "aldi"];
+          const ENSEIGNES_TICKET = ["coop", "denner", "lidl", "aldi", "inter discount", "interdiscount"];
           const EXCLUSIONS_TICKET = ["genossenschaft", "coop genossenschaft"];
           const nomFournisseur = (parsed.fournisseur || "").toLowerCase();
           const estExclu = EXCLUSIONS_TICKET.some(e => nomFournisseur.includes(e));
@@ -2532,6 +2534,17 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                           <span style={{ color: "#ffffff", fontSize: 20, fontWeight: 700 }}>{enseigne} <span style={{ color: "#D3DDEC", fontSize: 13, fontWeight: 400 }}>({info.count} ticket{info.count > 1 ? "s" : ""})</span></span>
                           <span style={{ color: "#F5A524", fontWeight: 800, fontSize: 20 }}>{fCHF(info.total)}</span>
                         </div>
+                        <button
+                          onClick={() => {
+                            const nouveau = (window.prompt(`Nouveau nom de l'enseigne pour ces ${info.count} ticket(s) :`, enseigne) || "").trim();
+                            if (!nouveau || nouveau === enseigne) return;
+                            const nom = normaliserEnseigne(nouveau);
+                            const liste = JSON.parse(localStorage.getItem(CLE_TICKETS_ATTENTE) || "[]").map(t => t.fournisseur === enseigne ? { ...t, fournisseur: nom } : t);
+                            localStorage.setItem(CLE_TICKETS_ATTENTE, JSON.stringify(liste));
+                            window.location.reload();
+                          }}
+                          style={{ background: "transparent", border: "1px solid #3B5686", color: "#D3DDEC", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer", marginTop: 10 }}
+                        >Changer l'enseigne</button>
                         <div style={{ ...MINI_LABEL, marginTop: 10, textAlign: "left" }}>N° de facture</div>
                         {info.possiblesDoublons > 0 && (
                           <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", background: "#3A1414", border: "1px solid #7F1D1D", borderRadius: 12, color: "#FCA5A5", fontSize: 13, lineHeight: 1.45, marginTop: 10 }}>
