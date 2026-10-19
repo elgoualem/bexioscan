@@ -1888,7 +1888,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               const base = nom.split("(")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
               const premierMot = (base.match(/[a-z0-9]+/) || [""])[0];
               const cle = premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
-              if (CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
+              if (!/genossenschaft/i.test(nom) && CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
               if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
               groupes[cle].nb++;
@@ -2265,6 +2265,47 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     <div style={{ padding: "8px 16px", color: "#8FA3C4", fontSize: 11 }}>Données lues dans bexio à {recap.maj}</div>
                   </div>
                 )}
+                {recap.maj && recap.annee === recapMois.annee && (() => {
+                  // Fournisseurs facturant une fois par mois : mois sans facture enregistrée (mois en cours exclu, la facture peut ne pas être arrivée)
+                  const SUIVIS = [
+                    { label: "Coop Genossenschaft", cle: "coop" },
+                    { label: "Salt", cle: "salt" },
+                    { label: "SIG", cle: "sig" },
+                    { label: "Feldschlösschen", cle: "feldsch" },
+                  ];
+                  const norm = (t) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+                  const auj = new Date();
+                  const dernierMois = recapMois.annee < auj.getFullYear() ? 11 : recapMois.annee === auj.getFullYear() ? auj.getMonth() - 1 : -1;
+                  const lignes = SUIVIS.map(sv => {
+                    const g = recap.fournisseursAn.find(f => norm(f.nom).startsWith(sv.cle));
+                    const manquants = [];
+                    for (let m = 0; m <= dernierMois; m++) if (!g || !g.mois[m]) manquants.push(m);
+                    return { ...sv, manquants, total: dernierMois + 1 };
+                  });
+                  const nbTotal = lignes.reduce((t, l) => t + l.manquants.length, 0);
+                  return (
+                    <div style={{ ...S.card2, padding: 0, overflow: "hidden", marginTop: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "#182645", borderBottom: "1px solid #3B5686" }}>
+                        <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Factures mensuelles manquantes · {recapMois.annee}</span>
+                        <span style={{ color: nbTotal ? "#F5A524" : "#4ADE80", fontWeight: 800, fontSize: 15 }}>{nbTotal ? `${nbTotal} manquante${nbTotal > 1 ? "s" : ""}` : "Complet"}</span>
+                      </div>
+                      {lignes.map(l => (
+                        <div key={l.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #2F4468" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: "#fff", fontSize: 14 }}>{l.label}</div>
+                            <div style={{ color: "#8FA3C4", fontSize: 12, marginTop: 3 }}>
+                              {l.manquants.length ? "Manque : " + l.manquants.map(m => MOIS_FR[m].slice(0, 4) + ".").join(", ") : `${l.total} mois sur ${l.total} enregistrés`}
+                            </div>
+                          </div>
+                          <span style={{ color: l.manquants.length ? "#F5A524" : "#4ADE80", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                            {l.manquants.length ? `${l.manquants.length} manquante${l.manquants.length > 1 ? "s" : ""}` : "OK"}
+                          </span>
+                        </div>
+                      ))}
+                      <div style={{ padding: "8px 16px", color: "#8FA3C4", fontSize: 11 }}>Mois en cours exclu · une facture par mois attendue</div>
+                    </div>
+                  );
+                })()}
                 {recap.fournisseursAn.length > 0 && (
                   <div style={{ ...S.card2, padding: 0, overflow: "hidden", marginTop: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "#182645", borderBottom: "1px solid #3B5686" }}>
