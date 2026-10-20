@@ -1887,7 +1887,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               // Même fournisseur malgré les variantes d'écriture : « SIG » / « SIG (Services Industriels…) », « Feldschosschen/ » / « Feldschlösschen Getränke AG »…
               const base = nom.split("(")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
               const premierMot = (base.match(/[a-z0-9]+/) || [""])[0];
-              const cle = premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
+              const cle = /coop/.test(base) && /genossenschaft/.test(base) ? "coop genossenschaft" : premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
               if (!/genossenschaft/i.test(nom) && CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
               if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
