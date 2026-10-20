@@ -2369,7 +2369,30 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   const moisPeriode = [...new Set(recap.fournisseursPer.flatMap(f => Object.keys(f.mois).map(Number)))].sort((a, b) => a - b);
                   return (
                     <div style={{ marginTop: 20 }}>
-                      <div style={MINI_LABEL}>Répartition des achats par mois</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <div style={{ ...MINI_LABEL, marginBottom: 0 }}>Répartition des achats par mois</div>
+                        <button
+                          onClick={() => {
+                            // Export CSV (séparateur « ; », virgule décimale, BOM UTF-8) : s'ouvre directement dans Excel
+                            const nb = (n) => (Math.round(n * 100) / 100).toFixed(2).replace(".", ",");
+                            const cell = (t) => `"${String(t).replace(/"/g, '""')}"`;
+                            const lignes = [["Mois", "Fournisseur", "Nb factures", "Montant CHF", "% du mois"].map(cell).join(";")];
+                            moisPeriode.forEach(mi => {
+                              const items = recap.fournisseursPer.filter(f => f.mois[mi]).map(f => ({ nom: f.nom, total: f.mois[mi].total, nb: f.mois[mi].nb })).sort((a, b) => b.total - a.total);
+                              const tot = items.reduce((t, i) => t + i.total, 0);
+                              items.forEach(i => lignes.push([MOIS_FR[mi], i.nom, i.nb, nb(i.total), nb(tot ? (i.total / tot) * 100 : 0)].map(cell).join(";")));
+                              lignes.push([MOIS_FR[mi], "TOTAL", items.reduce((t, i) => t + i.nb, 0), nb(tot), "100,00"].map(cell).join(";"));
+                            });
+                            const blob = new Blob(["\ufeff" + lignes.join("\r\n")], { type: "text/csv;charset=utf-8" });
+                            const a = document.createElement("a");
+                            a.href = URL.createObjectURL(blob);
+                            a.download = `repartition-achats_${recapMois.annee}-${String(recapMois.moisIdx + 1).padStart(2, "0")}_${recapFin.annee}-${String(recapFin.moisIdx + 1).padStart(2, "0")}.csv`;
+                            document.body.appendChild(a); a.click(); a.remove();
+                            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+                          }}
+                          style={{ background: "transparent", border: "1px solid #F5A524", color: "#F5A524", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                        >Exporter (CSV)</button>
+                      </div>
                       {moisPeriode.map(mi => (
                         <CamembertMois
                           key={mi}
