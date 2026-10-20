@@ -1899,7 +1899,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             const t = [b.address && b.address.lastname_company, b.supplier && b.supplier.name, contacts[b.supplier_id], b.title].join(" ");
             if (b.supplier_id && /coop/i.test(t) && /genossenschaft/i.test(t)) idsGeno.add(b.supplier_id);
           });
-          const regrouper = (liste) => {
+          const regrouper = (liste, avecTickets = false) => {
             const groupes = {};
             liste.forEach(b => {
               const nom = (b.address && b.address.lastname_company) || (b.supplier && b.supplier.name) || contacts[b.supplier_id] || (b.title || "").split(" - ")[0] || `Fournisseur ${b.supplier_id || "?"}`;
@@ -1910,18 +1910,21 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               // « Coop Genossenschaft » peut figurer dans le titre plutôt que dans le nom du contact : on regarde les deux
               const estGeno = idsGeno.has(b.supplier_id) || (/coop/i.test(nom + " " + (b.title || "")) && /genossenschaft/i.test(nom + " " + (b.title || "")));
               const cle = estGeno ? "coop genossenschaft" : premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
-              if (!estGeno && CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
-              if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
-              if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
-              groupes[cle].nb++;
-              groupes[cle].total += montant;
+              const chaine = !estGeno ? CHAINES_CONNUES.find(c => (nom + " " + (b.title || "")).toLowerCase().includes(c)) : null;
+              if (chaine && !avecTickets) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) : exclus du récap du mois, inclus dans le cumul annuel
+              const cleG = chaine ? "ticket-" + (chaine === "interdiscount" ? "inter discount" : chaine) : cle;
+              if (!groupes[cleG]) groupes[cleG] = { nom: chaine ? normaliserEnseigne(chaine) + " (tickets de caisse)" : nom, ticket: !!chaine, nb: 0, total: 0, mois: {} };
+              if (!chaine && nom.length > groupes[cleG].nom.length) groupes[cleG].nom = nom;
+              const cle2 = cleG;
+              groupes[cle2].nb++;
+              groupes[cle2].total += montant;
               const mi = periode(b).m;
-              if (mi >= 0 && mi < 12) { const m = groupes[cle].mois[mi] || { nb: 0, total: 0 }; m.nb++; m.total += montant; groupes[cle].mois[mi] = m; }
+              if (mi >= 0 && mi < 12) { const m = groupes[cle2].mois[mi] || { nb: 0, total: 0 }; m.nb++; m.total += montant; groupes[cle2].mois[mi] = m; }
             });
             return Object.values(groupes).sort((a, b) => b.total - a.total);
           };
           const fournisseurs = regrouper(dumois);
-          const fournisseursAn = regrouper(duan);
+          const fournisseursAn = regrouper(duan, true);
           setRecap({ chargement: false, erreur: "", fournisseurs, nb: fournisseurs.reduce((t, f) => t + f.nb, 0), total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, nbAn: fournisseursAn.reduce((t, f) => t + f.nb, 0), totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
         } catch (e) {
           setRecap(r => ({ ...r, chargement: false, erreur: "Récapitulatif indisponible : " + e.message }));
@@ -2299,7 +2302,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   const auj = new Date();
                   const dernierMois = recapMois.annee < auj.getFullYear() ? 11 : recapMois.annee === auj.getFullYear() ? auj.getMonth() - 1 : -1;
                   const lignes = SUIVIS.map(sv => {
-                    const g = recap.fournisseursAn.find(f => norm(f.nom).startsWith(sv.cle));
+                    const g = recap.fournisseursAn.find(f => !f.ticket && norm(f.nom).startsWith(sv.cle));
                     const manquants = [];
                     for (let m = 0; m <= dernierMois; m++) if (!g || !g.mois[m]) manquants.push(m);
                     return { ...sv, manquants, total: dernierMois + 1 };
