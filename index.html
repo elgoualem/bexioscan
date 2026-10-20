@@ -1025,16 +1025,20 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
         items = [...items].sort((a, b) => b.total - a.total);
         const tot = items.reduce((t, i) => t + i.total, 0);
         if (!(tot > 0)) return "";
+        // Au-delà de 8 fournisseurs : « Autres » (même découpage pour le camembert, les couleurs et le tableau)
+        if (items.length > 9) { const reste = items.slice(8); items = [...items.slice(0, 8), { nom: `Autres (${reste.length} fournisseurs)`, total: reste.reduce((t, i) => t + i.total, 0), nb: reste.reduce((t, i) => t + i.nb, 0) }]; }
         const R = 70, C = 80; let ang = -Math.PI / 2;
-        const arcs = items.slice(0, 9).map((it, i) => {
+        const arcs = items.map((it, i) => {
           const a = (it.total / tot) * Math.PI * 2;
           const x1 = C + R * Math.cos(ang), y1 = C + R * Math.sin(ang); ang += a;
           const x2 = C + R * Math.cos(ang), y2 = C + R * Math.sin(ang);
           const d = items.length === 1 ? `M ${C - R} ${C} a ${R} ${R} 0 1 0 ${2 * R} 0 a ${R} ${R} 0 1 0 ${-2 * R} 0` : `M ${C} ${C} L ${x1} ${y1} A ${R} ${R} 0 ${a > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`;
-          return `<path d="${d}" fill="${COULEURS_PIE[i % COULEURS_PIE.length]}" stroke="#fff" stroke-width="1.5"/>`;
+          const am = ang - a / 2;
+          const lab = a / (Math.PI * 2) >= 0.06 ? `<text x="${C + R * 0.62 * Math.cos(am)}" y="${C + R * 0.62 * Math.sin(am) + 3}" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">${Math.round((it.total / tot) * 100)}%</text>` : "";
+          return `<path d="${d}" fill="${COULEURS_PIE[i % COULEURS_PIE.length]}" stroke="#fff" stroke-width="1.5"/>${lab}`;
         }).join("");
-        const lignes = items.map((it, i) => `<tr><td><span class="pt" style="background:${COULEURS_PIE[Math.min(i, 8) % COULEURS_PIE.length]}"></span>${esc(it.nom)}</td><td class="r">${it.nb}</td><td class="r">${eur(it.total)}</td><td class="r">${Math.round((it.total / tot) * 100)} %</td></tr>`).join("");
-        return `<section><h2>${esc(titre)} <small>${eur(tot)} CHF</small></h2><div class="row"><svg viewBox="0 0 160 160" width="150" height="150">${arcs}</svg><table><thead><tr><th>Fournisseur</th><th class="r">Fact.</th><th class="r">Montant CHF</th><th class="r">%</th></tr></thead><tbody>${lignes}<tr class="t"><td>Total</td><td class="r">${items.reduce((t, i) => t + i.nb, 0)}</td><td class="r">${eur(tot)}</td><td class="r">100 %</td></tr></tbody></table></div></section>`;
+        const lignes = items.map((it, i) => `<tr><td><span class="pt" style="background:${COULEURS_PIE[i % COULEURS_PIE.length]}"></span>${esc(it.nom)}</td><td class="r">${it.nb}</td><td class="r">${eur(it.total)}</td><td class="r">${Math.round((it.total / tot) * 100)} %</td></tr>`).join("");
+        return `<section><h2>${esc(titre)} <small>${eur(tot)} CHF</small></h2><div class="row"><svg viewBox="0 0 160 160" width="190" height="190">${arcs}</svg><table><thead><tr><th>Couleur · Fournisseur</th><th class="r">Fact.</th><th class="r">Montant CHF</th><th class="r">%</th></tr></thead><tbody>${lignes}<tr class="t"><td>Total</td><td class="r">${items.reduce((t, i) => t + i.nb, 0)}</td><td class="r">${eur(tot)}</td><td class="r">100 %</td></tr></tbody></table></div></section>`;
       };
       const blocs = moisPeriode.map(mi => bloc(MOIS_FR[mi].charAt(0).toUpperCase() + MOIS_FR[mi].slice(1), fournisseursPer.filter(f => f.mois[mi]).map(f => ({ nom: f.nom, total: f.mois[mi].total, nb: f.mois[mi].nb })))).join("")
         // Dernière page : répartition de tous les achats réunis sur la période
@@ -1045,7 +1049,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
         body{font-family:Arial,Helvetica,sans-serif;color:#14213D;margin:24px}h1{font-size:20px;margin:0 0 4px}.sub{color:#555;margin:0 0 18px;font-size:13px}
         section{break-inside:avoid;margin-bottom:22px}h2{font-size:16px;border-bottom:2px solid #F5A524;padding-bottom:4px;display:flex;justify-content:space-between}h2 small{font-size:14px;color:#B45F06}
         .row{display:flex;gap:18px;align-items:center}table{border-collapse:collapse;flex:1;font-size:12px}th,td{padding:4px 6px;border-bottom:1px solid #ddd;text-align:left}.r{text-align:right;white-space:nowrap}
-        tr.t td{font-weight:700;border-top:2px solid #14213D}.pt{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+        tr.t td{font-weight:700;border-top:2px solid #14213D}.pt{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px;vertical-align:-1px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
         .fin{break-before:page;page-break-before:always}@media print{body{margin:10mm}}</style></head><body><h1>Répartition des achats par mois</h1><p class="sub">${esc(titrePeriode)} · tickets de caisse inclus · édité le ${new Date().toLocaleDateString("fr-CH")}</p>${blocs}</body></html>`);
       w.document.close();
       setTimeout(() => { try { w.focus(); w.print(); } catch (_) {} }, 400);
