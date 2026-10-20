@@ -1029,6 +1029,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [lotIdx, setLotIdx] = useState(0);
       const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, fournisseursAn: [], nbAn: 0, totalAn: 0, annee: 0, maj: "" }); // récap fournisseurs du mois
       const [sansPaiement, setSansPaiement] = useState(() => { try { return localStorage.getItem("bx_sans_paiement") === "1"; } catch (_) { return false; } });
+      const [recapFin, setRecapFin] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [recapMois, setRecapMois] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
@@ -1857,7 +1858,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
 
       // Recherche dans bexio d'une facture fournisseur déjà existante (même date + même montant, ou même référence)
       // Récapitulatif dynamique du mois : fournisseurs d'achats, nombre de factures et montants, lus en direct dans bexio
-      async function chargerRecap(moisIdx, annee) {
+      async function chargerRecap(moisIdx, annee, finMoisIdx = moisIdx, finAnnee = annee) {
         if (!token) { setRecap(r => ({ ...r, erreur: "Saisis ton token bexio pour afficher le récapitulatif.", fournisseurs: [], nb: 0, total: 0 })); return; }
         setRecap(r => ({ ...r, chargement: true, erreur: "" }));
         try {
@@ -1888,7 +1889,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             return { a: parseInt(d.slice(0, 4), 10), m: parseInt(d.slice(5, 7), 10) - 1 };
           };
           const duan = factures.filter(b => periode(b).a === annee);
-          const dumois = duan.filter(b => periode(b).m === moisIdx);
+          const deb = annee * 12 + moisIdx, fin = Math.max(deb, finAnnee * 12 + finMoisIdx); // période choisie, du mois de début au mois de fin inclus
+          const dumois = factures.filter(b => { const p = periode(b), k = p.a * 12 + p.m; return k >= deb && k <= fin; });
           // Noms des fournisseurs : directement sur la facture si dispo, sinon via les contacts bexio
           let contacts = {};
           {
@@ -1934,8 +1936,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         }
       }
       useEffect(() => {
-        if (step === 1 && token) chargerRecap(recapMois.moisIdx, recapMois.annee);
-      }, [step, token, recapMois.moisIdx, recapMois.annee]);
+        if (step === 1 && token) chargerRecap(recapMois.moisIdx, recapMois.annee, recapFin.moisIdx, recapFin.annee);
+      }, [step, token, recapMois.moisIdx, recapMois.annee, recapFin.moisIdx, recapFin.annee]);
 
       // Quand on revient sur un mois : on cherche dans bexio le plus grand n° g{mois}{aa}/NNN déjà utilisé, et le compteur repart de là (prochain = +1)
       async function synchroniserMoisDepuisBexio(moisIdx, annee) {
@@ -2267,21 +2269,26 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </label>
                 <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <label style={{ ...S.label, marginBottom: 0 }}>Achats de</label>
-                    <select value={recapMois.moisIdx} onChange={e => setRecapMois(r => ({ ...r, moisIdx: parseInt(e.target.value, 10) }))} style={{ ...S.input, width: "auto", padding: "6px 10px" }}>
+                    <select value={recapMois.moisIdx} onChange={e => { const v = parseInt(e.target.value, 10); setRecapMois(r => ({ ...r, moisIdx: v })); if (recapFin.annee * 12 + recapFin.moisIdx < recapMois.annee * 12 + v) setRecapFin(f => ({ annee: recapMois.annee, moisIdx: v })); }} style={{ ...S.input, width: "auto", padding: "6px 10px" }}>
                       {MOIS_FR.map((m, i) => <option key={i} value={i}>{m}</option>)}
                     </select>
-                    <input type="number" value={recapMois.annee} onChange={e => { const v = parseInt(e.target.value, 10); if (v > 2000 && v < 2100) setRecapMois(r => ({ ...r, annee: v })); }} style={{ ...S.input, width: 80, padding: "6px 10px" }} />
+                    <input type="number" value={recapMois.annee} onChange={e => { const v = parseInt(e.target.value, 10); if (v > 2000 && v < 2100) { setRecapMois(r => ({ ...r, annee: v })); if (recapFin.annee * 12 + recapFin.moisIdx < v * 12 + recapMois.moisIdx) setRecapFin({ annee: v, moisIdx: recapMois.moisIdx }); } }} style={{ ...S.input, width: 80, padding: "6px 10px" }} />
+                    <label style={{ ...S.label, marginBottom: 0 }}>à</label>
+                    <select value={recapFin.moisIdx} onChange={e => setRecapFin(f => ({ ...f, moisIdx: parseInt(e.target.value, 10) }))} style={{ ...S.input, width: "auto", padding: "6px 10px" }}>
+                      {MOIS_FR.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                    <input type="number" value={recapFin.annee} onChange={e => { const v = parseInt(e.target.value, 10); if (v > 2000 && v < 2100) setRecapFin(f => ({ ...f, annee: v })); }} style={{ ...S.input, width: 80, padding: "6px 10px" }} />
                   </div>
                   <button
-                    onClick={() => chargerRecap(recapMois.moisIdx, recapMois.annee)}
+                    onClick={() => chargerRecap(recapMois.moisIdx, recapMois.annee, recapFin.moisIdx, recapFin.annee)}
                     disabled={recap.chargement}
                     style={{ background: "transparent", border: "1px solid #3B5686", color: "#D3DDEC", borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}
                   >{recap.chargement ? "Chargement…" : "Actualiser"}</button>
                 </div>
                 {recap.erreur && <p style={{ ...S.hint, color: "#FCA5A5" }}>{recap.erreur}</p>}
-                {!recap.erreur && !recap.chargement && recap.fournisseurs.length === 0 && recap.maj && <p style={S.hint}>Aucune facture fournisseur enregistrée ce mois-ci.</p>}
+                {!recap.erreur && !recap.chargement && recap.fournisseurs.length === 0 && recap.maj && <p style={S.hint}>Aucune facture fournisseur enregistrée sur cette période.</p>}
                 {recap.fournisseurs.length > 0 && (
                   <div style={{ ...S.card2, padding: 0, overflow: "hidden" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "#182645", borderBottom: "1px solid #3B5686" }}>
@@ -2290,7 +2297,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     </div>
                     {recap.fournisseurs.map(f => (
                       <div key={f.nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #2F4468" }}>
-                        <span style={{ color: "#fff", fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: "#fff", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.nom}</div>
+                          {(recapFin.annee * 12 + recapFin.moisIdx) > (recapMois.annee * 12 + recapMois.moisIdx) && (
+                            <div style={{ color: "#8FA3C4", fontSize: 12, marginTop: 3 }}>
+                              {Object.keys(f.mois).map(Number).sort((a, b) => a - b).map(mi => `${MOIS_FR[mi].slice(0, 4)}. (${f.mois[mi].nb}) ${fCHF(f.mois[mi].total)}`).join(" · ")}
+                            </div>
+                          )}
+                        </div>
                         <span style={{ color: "#D3DDEC", fontSize: 13, whiteSpace: "nowrap" }}>{f.nb} fact. · <b style={{ color: "#fff" }}>{fCHF(f.total)}</b></span>
                       </div>
                     ))}
