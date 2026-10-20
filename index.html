@@ -1874,8 +1874,18 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             offset += arr.length;
           }
           const prefixeMois = `${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
-          const duan = factures.filter(b => String(b.bill_date || "").slice(0, 4) === String(annee));
-          const dumois = duan.filter(b => String(b.bill_date || "").slice(0, 7) === prefixeMois);
+          // Mois comptable d'une facture : celui de sa Référence (ex. « gavril26/023 » = avril 2026), même si la date de facture tombe en mai ;
+          // à défaut de référence reconnue, mois de la date de facture
+          const NOMS_MOIS = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"];
+          const periode = (b) => {
+            const ref = String(b.vendor_ref || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            const mr = ref.match(/^g([a-z]+)(\d{2})\//);
+            if (mr) { const i = NOMS_MOIS.indexOf(mr[1]); if (i >= 0) return { a: 2000 + parseInt(mr[2], 10), m: i }; }
+            const d = String(b.bill_date || "");
+            return { a: parseInt(d.slice(0, 4), 10), m: parseInt(d.slice(5, 7), 10) - 1 };
+          };
+          const duan = factures.filter(b => periode(b).a === annee);
+          const dumois = duan.filter(b => periode(b).m === moisIdx);
           // Noms des fournisseurs : directement sur la facture si dispo, sinon via les contacts bexio
           let contacts = {};
           {
@@ -1905,7 +1915,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               if (nom.length > groupes[cle].nom.length) groupes[cle].nom = nom;
               groupes[cle].nb++;
               groupes[cle].total += montant;
-              const mi = parseInt(String(b.bill_date || "").slice(5, 7), 10) - 1;
+              const mi = periode(b).m;
               if (mi >= 0 && mi < 12) { const m = groupes[cle].mois[mi] || { nb: 0, total: 0 }; m.nb++; m.total += montant; groupes[cle].mois[mi] = m; }
             });
             return Object.values(groupes).sort((a, b) => b.total - a.total);
