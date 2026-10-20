@@ -1069,6 +1069,8 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
       const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, fournisseursAn: [], nbAn: 0, totalAn: 0, annee: 0, maj: "" }); // récap fournisseurs du mois
+      const [onglet, setOngletState] = useState(() => { try { return localStorage.getItem("bx_token") ? (localStorage.getItem("bx_onglet") || "connexion") : "connexion"; } catch (_) { return "connexion"; } });
+      const setOnglet = (o) => { setOngletState(o); try { localStorage.setItem("bx_onglet", o); } catch (_) {} };
       const [sansPaiement, setSansPaiement] = useState(() => { try { return localStorage.getItem("bx_sans_paiement") === "1"; } catch (_) { return false; } });
       const [recapFin, setRecapFin] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [recapMois, setRecapMois] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
@@ -2198,8 +2200,14 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
             {/* Étape 1 — Token */}
             {step === 1 && (
               <div style={S.section}>
-                <h2 style={S.title}>Connexion</h2>
-                <p style={S.subtitle}>Choisis ton IA, puis renseigne tes deux clés API</p>
+                <div style={{ display: "flex", gap: 6, background: "#0E1830", border: "1px solid #2F4468", borderRadius: 14, padding: 5, marginBottom: 22 }}>
+                  {[["connexion", "Connexion"], ["numerotation", "Numérotation"], ["achats", "Achats"]].map(([id, nom]) => (
+                    <button key={id} onClick={() => setOnglet(id)} style={{ flex: 1, minHeight: 42, borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, background: onglet === id ? "#F5A524" : "transparent", color: onglet === id ? "#14213D" : "#D3DDEC", transition: "background .15s" }}>{nom}</button>
+                  ))}
+                </div>
+                <h2 style={S.title}>{onglet === "connexion" ? "Connexion" : onglet === "numerotation" ? "Numérotation" : "Tableau des achats"}</h2>
+                <p style={S.subtitle}>{onglet === "connexion" ? "Choisis ton IA, puis renseigne tes deux clés API" : onglet === "numerotation" ? "Mois et numéro de départ des factures" : "Fournisseurs, montants et contrôles par mois"}</p>
+                {onglet === "connexion" && (<>
 
                 <label style={S.label}>Fournisseur IA</label>
                 <select value={llmProvider} onChange={e => changerFournisseur(e.target.value)} style={{ ...S.select, marginBottom: 14 }}>
@@ -2253,8 +2261,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   Continuer<IcoArrow />
                 </button>
                 <p style={S.hint}>Clés stockées uniquement dans le navigateur.</p>
+                </>)}
 
-                <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
+                {onglet === "numerotation" && (<>
                 <label style={S.label}>Mois de numérotation</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <select
@@ -2309,7 +2318,9 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                   <input type="checkbox" checked={sansPaiement} onChange={e => { setSansPaiement(e.target.checked); try { localStorage.setItem("bx_sans_paiement", e.target.checked ? "1" : "0"); } catch (_) {} }} />
                   Test : créer les factures sans paiement pré-rempli
                 </label>
-                <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
+                </>)}
+
+                {onglet === "achats" && (<>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <label style={{ ...S.label, marginBottom: 0 }}>Achats de</label>
@@ -2429,6 +2440,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     ))}
                   </div>
                 )}
+                </>)}
               </div>
             )}
 
