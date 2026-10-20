@@ -1873,12 +1873,17 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           const dumois = duan.filter(b => String(b.bill_date || "").slice(0, 7) === prefixeMois);
           // Noms des fournisseurs : directement sur la facture si dispo, sinon via les contacts bexio
           let contacts = {};
-          if (duan.some(b => !(b.address && b.address.lastname_company) && !(b.supplier && b.supplier.name))) {
+          {
             try {
               const rc = await fetch(`/bexio-proxy?path=/2.0/contact&limit=2000`, { headers: hdr });
               if (rc.ok) (await rc.json()).forEach(c => { contacts[c.id] = [c.name_1, c.name_2].filter(Boolean).join(" ").trim(); });
             } catch (_) {}
           }
+          const idsGeno = new Set();
+          factures.forEach(b => {
+            const t = [b.address && b.address.lastname_company, b.supplier && b.supplier.name, contacts[b.supplier_id], b.title].join(" ");
+            if (b.supplier_id && /coop/i.test(t) && /genossenschaft/i.test(t)) idsGeno.add(b.supplier_id);
+          });
           const regrouper = (liste) => {
             const groupes = {};
             liste.forEach(b => {
@@ -1888,7 +1893,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
               const base = nom.split("(")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
               const premierMot = (base.match(/[a-z0-9]+/) || [""])[0];
               // « Coop Genossenschaft » peut figurer dans le titre plutôt que dans le nom du contact : on regarde les deux
-              const estGeno = /coop/i.test(nom + " " + (b.title || "")) && /genossenschaft/i.test(nom + " " + (b.title || ""));
+              const estGeno = idsGeno.has(b.supplier_id) || (/coop/i.test(nom + " " + (b.title || "")) && /genossenschaft/i.test(nom + " " + (b.title || "")));
               const cle = estGeno ? "coop genossenschaft" : premierMot.length >= 7 ? premierMot.slice(0, 7) : base.replace(/[^a-z0-9]+/g, " ").trim();
               if (!estGeno && CHAINES_CONNUES.some(c => nom.toLowerCase().includes(c))) return; // tickets de caisse (Coop, Lidl, Denner, Aldi, Inter Discount) exclus du récap
               if (!groupes[cle]) groupes[cle] = { nom, nb: 0, total: 0, mois: {} };
