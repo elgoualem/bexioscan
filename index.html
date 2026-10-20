@@ -1863,7 +1863,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           // Pagination sur la taille réelle des pages renvoyées : bexio peut plafonner « limit » sous 500 (sinon on s'arrêtait après la 1re page et les factures anciennes manquaient)
           const vus = new Set();
           for (let offset = 0, page = 0; page < 60; page++) {
-            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500&offset=${offset}`, { headers: hdr });
+            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills?limit=500&offset=${offset}`, { headers: hdr });
             if (!r.ok) { if (offset === 0) throw new Error(`bexio ${r.status}`); break; }
             const liste = await r.json();
             const arr = Array.isArray(liste) ? liste : (liste.data || []);
@@ -1880,7 +1880,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           let contacts = {};
           {
             try {
-              const rc = await fetch(`/bexio-proxy?path=/2.0/contact&limit=2000`, { headers: hdr });
+              const rc = await fetch(`/bexio-proxy?path=/2.0/contact?limit=2000`, { headers: hdr });
               if (rc.ok) (await rc.json()).forEach(c => { contacts[c.id] = [c.name_1, c.name_2].filter(Boolean).join(" ").trim(); });
             } catch (_) {}
           }
@@ -1930,7 +1930,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           const prefixe = `g${sans(MOIS_FR[moisIdx])}${String(annee).slice(-2)}/`;
           let max = 0;
           for (let offset = 0; offset < 2000; offset += 500) {
-            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500&offset=${offset}`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+            const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills?limit=500&offset=${offset}`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
             if (!r.ok) break;
             const liste = await r.json();
             const arr = Array.isArray(liste) ? liste : (liste.data || []);
@@ -1951,7 +1951,7 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         setDoublons([]);
         if (!token || !d || !d.date_facture) return;
         try {
-          const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
+          const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills?limit=500`, { headers: { "x-bexio-token": token, Accept: "application/json" } });
           if (!r.ok) return;
           const liste = await r.json();
           const arr = Array.isArray(liste) ? liste : (liste.data || []);
