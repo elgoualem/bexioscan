@@ -1028,6 +1028,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       const [lot, setLot] = useState([]);       // lot de factures issues d'un même PDF
       const [lotIdx, setLotIdx] = useState(0);
       const [recap, setRecap] = useState({ chargement: false, erreur: "", fournisseurs: [], nb: 0, total: 0, fournisseursAn: [], nbAn: 0, totalAn: 0, annee: 0, maj: "" }); // récap fournisseurs du mois
+      const [sansPaiement, setSansPaiement] = useState(() => { try { return localStorage.getItem("bx_sans_paiement") === "1"; } catch (_) { return false; } });
       const [recapMois, setRecapMois] = useState(() => { const m = getMoisActif(); return { moisIdx: m.moisIdx, annee: m.annee < 100 ? 2000 + m.annee : m.annee }; });
       const [infoMois, setInfoMois] = useState(""); // dernier n° trouvé dans bexio pour le mois de numérotation choisi
       const [lotNums, setLotNums] = useState({}); // n° internes déjà attribués : { index: "gavril26/001" }
@@ -1769,6 +1770,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           // pour que l'interface recalcule et valide. Si l'API refuse, on retombe sur la version avec total manuel (voir plus bas).
           // Avoir (total négatif) : bexio refuse un paiement négatif ou à 0 → la facture est créée sans paiement
           if (r2(totals(d).ttc) <= 0) delete payload.payment;
+          // Option de test : créer sans bloc paiement (la console bexio signale « big.js Invalid number » au chargement du formulaire)
+          try { if (localStorage.getItem("bx_sans_paiement") === "1") delete payload.payment; } catch (_) {}
           const payloadManuel = JSON.parse(JSON.stringify(payload));
           payload.manual_amount = false;
           delete payload.amount_man;
@@ -2258,6 +2261,10 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                 </div>
                 <p style={S.hint}>La prochaine facture portera ce numéro pour le mois choisi ci-dessus, puis la suite s'incrémente seule — quelle que soit la date réelle du scan.</p>
 
+                <label style={{ display: "flex", gap: 10, alignItems: "center", color: "#D3DDEC", fontSize: 13, marginTop: 14, cursor: "pointer" }}>
+                  <input type="checkbox" checked={sansPaiement} onChange={e => { setSansPaiement(e.target.checked); try { localStorage.setItem("bx_sans_paiement", e.target.checked ? "1" : "0"); } catch (_) {} }} />
+                  Test : créer les factures sans paiement pré-rempli
+                </label>
                 <div style={{ borderTop: "1px solid #2F4468", margin: "26px 0 20px" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
