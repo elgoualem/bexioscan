@@ -1860,13 +1860,18 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
         try {
           const hdr = { "x-bexio-token": token, Accept: "application/json" };
           const factures = [];
-          for (let offset = 0; offset < 5000; offset += 500) {
+          // Pagination sur la taille réelle des pages renvoyées : bexio peut plafonner « limit » sous 500 (sinon on s'arrêtait après la 1re page et les factures anciennes manquaient)
+          const vus = new Set();
+          for (let offset = 0, page = 0; page < 60; page++) {
             const r = await fetch(`/bexio-proxy?path=/4.0/purchase/bills&limit=500&offset=${offset}`, { headers: hdr });
             if (!r.ok) { if (offset === 0) throw new Error(`bexio ${r.status}`); break; }
             const liste = await r.json();
             const arr = Array.isArray(liste) ? liste : (liste.data || []);
-            factures.push(...arr);
-            if (arr.length < 500) break;
+            const nouveaux = arr.filter(b => !vus.has(b.id));
+            nouveaux.forEach(b => vus.add(b.id));
+            factures.push(...nouveaux);
+            if (arr.length === 0 || nouveaux.length === 0) break;
+            offset += arr.length;
           }
           const prefixeMois = `${annee}-${String(moisIdx + 1).padStart(2, "0")}`;
           const duan = factures.filter(b => String(b.bill_date || "").slice(0, 4) === String(annee));
