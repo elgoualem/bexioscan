@@ -976,6 +976,47 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
       return new Intl.NumberFormat("fr-CH", { style: "currency", currency: "CHF", minimumFractionDigits: 2 }).format(val);
     }
 
+    // Camembert SVG : parts par fournisseur pour un mois (au-delà de 8 fournisseurs, le reste est regroupé en « Autres »)
+    const COULEURS_PIE = ["#F5A524", "#4F8EF7", "#34D399", "#F472B6", "#A78BFA", "#22D3EE", "#FB7185", "#FACC15", "#94A3B8"];
+    function CamembertMois({ titre, items }) {
+      const tri = [...items].sort((a, b) => b.total - a.total);
+      const tete = tri.slice(0, 8);
+      const reste = tri.slice(8).reduce((t, i) => t + i.total, 0);
+      const parts = reste > 0 ? [...tete, { nom: "Autres", total: reste, nb: tri.slice(8).reduce((t, i) => t + i.nb, 0) }] : tete;
+      const total = parts.reduce((t, p) => t + p.total, 0);
+      if (!(total > 0)) return null;
+      const R = 70, C = 80;
+      let angle = -Math.PI / 2;
+      const arcs = parts.map((p, i) => {
+        const a = (p.total / total) * Math.PI * 2;
+        const x1 = C + R * Math.cos(angle), y1 = C + R * Math.sin(angle);
+        angle += a;
+        const x2 = C + R * Math.cos(angle), y2 = C + R * Math.sin(angle);
+        const d = parts.length === 1 ? `M ${C - R} ${C} a ${R} ${R} 0 1 0 ${2 * R} 0 a ${R} ${R} 0 1 0 ${-2 * R} 0` : `M ${C} ${C} L ${x1} ${y1} A ${R} ${R} 0 ${a > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`;
+        return <path key={i} d={d} fill={COULEURS_PIE[i % COULEURS_PIE.length]} stroke="#182645" strokeWidth="1.5" />;
+      });
+      return (
+        <div style={{ background: "#121C33", border: "1px solid #2F4468", borderRadius: 16, padding: 16, marginTop: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+            <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{titre}</span>
+            <span style={{ color: "#F5A524", fontWeight: 800, fontSize: 15 }}>{fCHF(total)}</span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
+            <svg viewBox="0 0 160 160" width="160" height="160" style={{ flex: "0 0 auto" }}>{arcs}</svg>
+            <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+              {parts.map((p, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 13 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: COULEURS_PIE[i % COULEURS_PIE.length], flex: "0 0 auto" }} />
+                  <span style={{ color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                  <span style={{ color: "#D3DDEC", whiteSpace: "nowrap" }}>{fCHF(p.total)} · {Math.round((p.total / total) * 100)} %</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // Styles partagés (hors composant App pour être utilisables dans Field)
     const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
     const MINI_LABEL = { fontSize: 13, fontWeight: 700, color: "#B8C6DB", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 };
@@ -1930,7 +1971,8 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
           };
           const fournisseurs = regrouper(dumois);
           const fournisseursAn = regrouper(duan, true);
-          setRecap({ chargement: false, erreur: "", fournisseurs, nb: fournisseurs.reduce((t, f) => t + f.nb, 0), total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, nbAn: fournisseursAn.reduce((t, f) => t + f.nb, 0), totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
+          const fournisseursPer = regrouper(dumois, true); // période choisie, tickets de caisse inclus (camemberts)
+          setRecap({ chargement: false, erreur: "", fournisseurs, nb: fournisseurs.reduce((t, f) => t + f.nb, 0), total: fournisseurs.reduce((t, f) => t + f.total, 0), fournisseursAn, fournisseursPer, nbAn: fournisseursAn.reduce((t, f) => t + f.nb, 0), totalAn: fournisseursAn.reduce((t, f) => t + f.total, 0), annee, maj: new Date().toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" }) });
         } catch (e) {
           setRecap(r => ({ ...r, chargement: false, erreur: "Récapitulatif indisponible : " + e.message }));
         }
@@ -2311,6 +2353,22 @@ Important : pour chaque ticket/facture, ventile chaque ligne d'article vers le b
                     <div style={{ padding: "8px 16px", color: "#8FA3C4", fontSize: 11 }}>Données lues dans bexio à {recap.maj}</div>
                   </div>
                 )}
+                {(recap.fournisseursPer || []).length > 0 && (() => {
+                  // Un camembert par mois de la période : parts de chaque fournisseur (tickets de caisse inclus)
+                  const moisPeriode = [...new Set(recap.fournisseursPer.flatMap(f => Object.keys(f.mois).map(Number)))].sort((a, b) => a - b);
+                  return (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={MINI_LABEL}>Répartition des achats par mois</div>
+                      {moisPeriode.map(mi => (
+                        <CamembertMois
+                          key={mi}
+                          titre={MOIS_FR[mi].charAt(0).toUpperCase() + MOIS_FR[mi].slice(1)}
+                          items={recap.fournisseursPer.filter(f => f.mois[mi]).map(f => ({ nom: f.nom, total: f.mois[mi].total, nb: f.mois[mi].nb }))}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
                 {recap.maj && recap.annee === recapMois.annee && (() => {
                   // Fournisseurs facturant une fois par mois : mois sans facture enregistrée (mois en cours exclu, la facture peut ne pas être arrivée)
                   const SUIVIS = [
