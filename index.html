@@ -1021,8 +1021,8 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
     function exporterRepartitionPDF(moisPeriode, fournisseursPer, titrePeriode) {
       const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       const eur = (n) => new Intl.NumberFormat("fr-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-      const blocs = moisPeriode.map(mi => {
-        const items = fournisseursPer.filter(f => f.mois[mi]).map(f => ({ nom: f.nom, total: f.mois[mi].total, nb: f.mois[mi].nb })).sort((a, b) => b.total - a.total);
+      const bloc = (titre, items) => {
+        items = [...items].sort((a, b) => b.total - a.total);
         const tot = items.reduce((t, i) => t + i.total, 0);
         if (!(tot > 0)) return "";
         const R = 70, C = 80; let ang = -Math.PI / 2;
@@ -1034,8 +1034,11 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
           return `<path d="${d}" fill="${COULEURS_PIE[i % COULEURS_PIE.length]}" stroke="#fff" stroke-width="1.5"/>`;
         }).join("");
         const lignes = items.map((it, i) => `<tr><td><span class="pt" style="background:${COULEURS_PIE[Math.min(i, 8) % COULEURS_PIE.length]}"></span>${esc(it.nom)}</td><td class="r">${it.nb}</td><td class="r">${eur(it.total)}</td><td class="r">${Math.round((it.total / tot) * 100)} %</td></tr>`).join("");
-        return `<section><h2>${esc(MOIS_FR[mi].charAt(0).toUpperCase() + MOIS_FR[mi].slice(1))} <small>${eur(tot)} CHF</small></h2><div class="row"><svg viewBox="0 0 160 160" width="150" height="150">${arcs}</svg><table><thead><tr><th>Fournisseur</th><th class="r">Fact.</th><th class="r">Montant CHF</th><th class="r">%</th></tr></thead><tbody>${lignes}<tr class="t"><td>Total</td><td class="r">${items.reduce((t, i) => t + i.nb, 0)}</td><td class="r">${eur(tot)}</td><td class="r">100 %</td></tr></tbody></table></div></section>`;
-      }).join("");
+        return `<section><h2>${esc(titre)} <small>${eur(tot)} CHF</small></h2><div class="row"><svg viewBox="0 0 160 160" width="150" height="150">${arcs}</svg><table><thead><tr><th>Fournisseur</th><th class="r">Fact.</th><th class="r">Montant CHF</th><th class="r">%</th></tr></thead><tbody>${lignes}<tr class="t"><td>Total</td><td class="r">${items.reduce((t, i) => t + i.nb, 0)}</td><td class="r">${eur(tot)}</td><td class="r">100 %</td></tr></tbody></table></div></section>`;
+      };
+      const blocs = moisPeriode.map(mi => bloc(MOIS_FR[mi].charAt(0).toUpperCase() + MOIS_FR[mi].slice(1), fournisseursPer.filter(f => f.mois[mi]).map(f => ({ nom: f.nom, total: f.mois[mi].total, nb: f.mois[mi].nb })))).join("")
+        // Dernière page : répartition de tous les achats réunis sur la période
+        + `<div class="fin">${bloc("Total de la période : tous les achats réunis", fournisseursPer.map(f => ({ nom: f.nom, total: moisPeriode.reduce((t, mi) => t + (f.mois[mi] ? f.mois[mi].total : 0), 0), nb: moisPeriode.reduce((t, mi) => t + (f.mois[mi] ? f.mois[mi].nb : 0), 0) })).filter(i => i.total !== 0))}</div>`;
       const w = window.open("", "_blank");
       if (!w) { alert("Autorise les fenêtres pop-up pour ce site, puis réessaie."); return; }
       w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Répartition des achats ${esc(titrePeriode)}</title><style>
@@ -1043,7 +1046,7 @@ const texteBexio = (t) => (t || "").replace(/[\u2013\u2014]/g, "-");
         section{break-inside:avoid;margin-bottom:22px}h2{font-size:16px;border-bottom:2px solid #F5A524;padding-bottom:4px;display:flex;justify-content:space-between}h2 small{font-size:14px;color:#B45F06}
         .row{display:flex;gap:18px;align-items:center}table{border-collapse:collapse;flex:1;font-size:12px}th,td{padding:4px 6px;border-bottom:1px solid #ddd;text-align:left}.r{text-align:right;white-space:nowrap}
         tr.t td{font-weight:700;border-top:2px solid #14213D}.pt{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
-        @media print{body{margin:10mm}}</style></head><body><h1>Répartition des achats par mois</h1><p class="sub">${esc(titrePeriode)} · tickets de caisse inclus · édité le ${new Date().toLocaleDateString("fr-CH")}</p>${blocs}</body></html>`);
+        .fin{break-before:page;page-break-before:always}@media print{body{margin:10mm}}</style></head><body><h1>Répartition des achats par mois</h1><p class="sub">${esc(titrePeriode)} · tickets de caisse inclus · édité le ${new Date().toLocaleDateString("fr-CH")}</p>${blocs}</body></html>`);
       w.document.close();
       setTimeout(() => { try { w.focus(); w.print(); } catch (_) {} }, 400);
     }
